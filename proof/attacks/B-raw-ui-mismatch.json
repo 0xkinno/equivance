@@ -1,0 +1,13 @@
+{
+  "attackId": "ATTACK-B-RAW-UI-MISMATCH",
+  "timestamp": "2026-09-09T21:46:22.915Z",
+  "scenario": "Attempting to leverage raw balance without UI multiplier scaling",
+  "inputRawAmount": "100000000000000000000",
+  "multiplier": "100000000000000000",
+  "computedUIAmount": "10000000000000000000",
+  "collateralValueEnforcedUsd": "2000000000000000000000",
+  "maxDebtAllowedUsd": "1500000000000000000000",
+  "attemptedBorrowUsd": "5000000000000000000000",
+  "defenseStatus": "DEFENDED",
+  "verifierStatus": "PASS"
+}

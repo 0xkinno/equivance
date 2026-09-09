@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Environment and Secrets (CRITICAL: Never commit private keys or API keys)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.key
+*.pem
+*private_key*
+*secret*
+*.p12
+
+# Reference and sensitive instructions
+reference/
+instruction*.md
+
+# Next.js Build Output
+.next/
+out/
+build/
+dist/
+
+# Hardhat & Foundry Artifacts
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Testing & Coverage
+coverage/
+coverage.json
+.nyc_output/
+
+# System and OS Files
+.DS_Store
+Thumbs.db
+.system_generated/
+.turbo/

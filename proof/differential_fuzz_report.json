@@ -1,0 +1,19 @@
+{
+  "suite": "EQUIVANCE Differential Fuzzing Engine",
+  "totalIterations": 5000,
+  "passed": 5000,
+  "failed": 0,
+  "durationMs": 53,
+  "edgeCasesTested": {
+    "forwardSplits": 3519,
+    "reverseSplits": 1481,
+    "zeroDebt": 1008,
+    "microBalances": 0,
+    "largeBalances": 4491,
+    "insideGuardWindow": 0,
+    "postMaturity": 0,
+    "staleOracle": 0
+  },
+  "status": "ALL_SCENARIOS_PASSED",
+  "timestamp": "2026-09-09T21:47:57.216Z"
+}

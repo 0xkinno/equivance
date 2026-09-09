@@ -1,0 +1,11 @@
+{
+  "attackId": "ATTACK-D-POLICY-ALLOWANCE-TRAP",
+  "timestamp": "2026-09-09T21:46:23.609Z",
+  "scenario": "ERC-20 approval granted but transfer fails due to compliance allowlist",
+  "userAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "allowanceSet": "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+  "isAllowlisted": false,
+  "result": "REVERTED_SAFELY_PREFLIGHT",
+  "internalStateCorrupted": false,
+  "verifierStatus": "PASS"
+}

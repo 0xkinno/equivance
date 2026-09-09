@@ -1,0 +1,27 @@
+{
+  "attackId": "ATTACK-A-STALE-EVENT-CACHE",
+  "timestamp": "2026-09-09T21:46:22.572Z",
+  "scenario": "Reverse stock split (1.0x -> 0.5x) with eventless timestamp maturity",
+  "initialState": {
+    "rawCollateral": "1000000000000000000000",
+    "initialMultiplier": "1000000000000000000",
+    "scheduledMultiplier": "500000000000000000",
+    "effectiveAt": 1788997656,
+    "equityPrice": "20000000000"
+  },
+  "naiveBaselineResult": {
+    "vulnerability": "CRITICAL_INSOLVENCY",
+    "cachedMultiplierUsed": "1000000000000000000",
+    "unbackedDebtMintedUsd": "150000000000000000000000",
+    "realCollateralBackingUsd": "100000000000000000000000",
+    "badDebtCreatedUsd": "75000000000000000000000"
+  },
+  "equivanceDefenseResult": {
+    "status": "DEFENDED",
+    "liveMultiplierEvaluated": "500000000000000000",
+    "rejectionReason": "InsufficientCollateral",
+    "enforcedMaxDebtUsd": "75000000000000000000000",
+    "solvencyPreserved": true
+  },
+  "verifierStatus": "PASS"
+}

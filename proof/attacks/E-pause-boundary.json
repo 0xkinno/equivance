@@ -1,0 +1,10 @@
+{
+  "attackId": "ATTACK-E-PAUSE-BOUNDARY",
+  "timestamp": "2026-09-09T21:46:23.953Z",
+  "scenario": "Attempting credit actions during issuer emergency pause",
+  "assetPaused": true,
+  "borrowAttemptResult": "REVERTED_ASSET_BLOCKED",
+  "withdrawAttemptResult": "REVERTED_TRANSFER_FAILED",
+  "protocolPolicy": "FAIL_CLOSED_PROTECTION",
+  "verifierStatus": "PASS"
+}

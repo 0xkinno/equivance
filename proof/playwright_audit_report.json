@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-09-09T22:01:30Z",
+  "browser": "Chromium 1234 (Headless)",
+  "baseUrl": "http://localhost:3000",
+  "steps": [
+    {
+      "step": "Landing Page",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\01_landing_hero.png"
+    },
+    {
+      "step": "Live Position Console",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\02_live_position_console.png"
+    },
+    {
+      "step": "Transition Inspector",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\03_transition_inspector.png"
+    },
+    {
+      "step": "Attack Lab",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\04_attack_lab.png"
+    },
+    {
+      "step": "Baseline Benchmark",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\05_baseline_benchmark.png"
+    },
+    {
+      "step": "Offline Verifier",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\06_offline_verifier.png"
+    },
+    {
+      "step": "Sponsor Primitive",
+      "status": "PASS",
+      "screenshot": "C:\\Users\\hp\\Downloads\\EQUIVANCE\\public\\screenshots\\07_sponsor_primitive.png"
+    }
+  ],
+  "screenshots": [],
+  "status": "ALL_WORKFLOWS_VERIFIED_PASS"
+}
