@@ -48,4 +48,7 @@ coverage.json
 Thumbs.db
 .system_generated/
 .turbo/
-.vercel
+.vercel/
+
+# Video Production
+video/

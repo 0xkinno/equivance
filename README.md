@@ -66,6 +66,7 @@ The two paths are alternatives, never a compound formula.
 | Resource | Description / Endpoint |
 |---|---|
 | **Live Web App** | [EQUIVANCE Protocol Studio](https://equivance.vercel.app) |
+| **Demo Video** | [Watch on Youtube](https://youtu.be/owCtDoSX6uo?si=Dt7lfajBtDJrzAkr) |
 | **Repository** | [github.com/0xkinno/equivance](https://github.com/0xkinno/equivance) |
 
 
