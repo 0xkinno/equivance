@@ -48,3 +48,4 @@ coverage.json
 Thumbs.db
 .system_generated/
 .turbo/
+.vercel
