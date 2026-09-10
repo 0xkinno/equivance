@@ -23,7 +23,7 @@ describe("Unit: RiskEngine", function () {
     mockAsset = await MockB20.deploy("Apple Tokenized Stock", "AAPLc", 18);
 
     const MockAggregator = await ethers.getContractFactory("MockAggregatorV3");
-    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD", 20000000000); // $200.00
+    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD Total Return", 20000000000); // .00 TRV
 
     await riskEngine.setAssetConfig(
       await mockAsset.getAddress(),
@@ -37,9 +37,9 @@ describe("Unit: RiskEngine", function () {
     );
   });
 
-  it("should evaluate a coherent healthy position correctly", async function () {
+  it("should evaluate a coherent healthy position correctly under canonical TRV rule", async function () {
     const rawCollateral = 100n * WAD; // 100 raw tokens
-    const debtAmount = 10000n * WAD; // $10,000 debt
+    const debtAmount = 10000n * WAD; // ,000 debt
 
     const evalResult = await riskEngine.evaluatePosition(
       await mockAsset.getAddress(),
@@ -47,19 +47,26 @@ describe("Unit: RiskEngine", function () {
       debtAmount
     );
 
-    expect(evalResult.rawCollateral).to.equal(rawCollateral);
+    expect(evalResult.rawTokenAmount).to.equal(rawCollateral);
     expect(evalResult.effectiveMultiplier).to.equal(1n * WAD);
-    expect(evalResult.uiCollateral).to.equal(100n * WAD);
-    expect(evalResult.collateralValueUsd).to.equal(20000n * WAD); // 100 * $200 = $20,000
-    expect(evalResult.maxDebtUsd).to.equal(15000n * WAD); // 75% of $20,000 = $15,000
+    expect(evalResult.uiShareAmount).to.equal(100n * WAD);
+    expect(evalResult.collateralUsdWad).to.equal(20000n * WAD); // 100 *  = ,000
+    expect(evalResult.maxDebtUsdWad).to.equal(15000n * WAD); // 75% of ,000 = ,000
     expect(evalResult.status).to.equal(0); // COHERENT
     expect(evalResult.isHealthy).to.be.true;
     expect(evalResult.isLiquidatable).to.be.false;
   });
 
+  it("should implement canonical valueCollateral interface without multiplying B20 multiplier", async function () {
+    const rawAmount = 50n * WAD;
+    const trvPrice = 20000000000n; // .00 (8 dec)
+    const val = await riskEngine.valueCollateral(await mockAsset.getAddress(), rawAmount, trvPrice);
+    expect(val).to.equal(10000n * WAD); // 50 *  = ,000
+  });
+
   it("should flag position as liquidatable when health factor drops below 1.0", async function () {
-    const rawCollateral = 100n * WAD; // $20,000 value -> $17,000 liq collateral
-    const debtAmount = 18000n * WAD; // $18,000 debt -> HF = 17k / 18k = 0.944 < 1.0
+    const rawCollateral = 100n * WAD; // ,000 value -> ,000 liq collateral
+    const debtAmount = 18000n * WAD; // ,000 debt -> HF = 17k / 18k = 0.944 < 1.0
 
     const evalResult = await riskEngine.evaluatePosition(
       await mockAsset.getAddress(),
@@ -91,7 +98,7 @@ describe("Unit: RiskEngine", function () {
 
     expect(evalResult.status).to.equal(2); // TRANSITION
     // LTV reduced from 75% to 70% during guard window (500 BPS buffer)
-    expect(evalResult.maxDebtUsd).to.equal(14000n * WAD); // 70% of $20,000
+    expect(evalResult.maxDebtUsdWad).to.equal(14000n * WAD); // 70% of ,000
   });
 
   it("should mark position as BLOCKED if asset transfer is paused", async function () {

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Shield, ArrowDownCircle, ArrowUpCircle, RefreshCw, AlertCircle, CheckCircle2, TrendingUp, Info } from "lucide-react";
+import { Shield, ArrowDownCircle, ArrowUpCircle, RefreshCw, AlertCircle, CheckCircle2, TrendingUp, Info, ShieldCheck } from "lucide-react";
 
 export const LivePositionConsole: React.FC = () => {
   // Stock Selection State
@@ -11,10 +11,9 @@ export const LivePositionConsole: React.FC = () => {
   const [rawCollateral, setRawCollateral] = useState<number>(500); // 500 raw tokens
   const [multiplier, setMultiplier] = useState<number>(1.0); // 1.0x
   const [hasPending, setHasPending] = useState<boolean>(false);
-  const [pendingMult, setPendingMult] = useState<number>(2.0);
   const [inGuardWindow, setInGuardWindow] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [price, setPrice] = useState<number>(selectedAsset === "AAPLc" ? 225.50 : 128.40);
+  const [price, setPrice] = useState<number>(selectedAsset === "AAPLc" ? 225.50 : 128.40); // Total Return Price
   const [debtAmount, setDebtAmount] = useState<number>(35000); // $35,000 debt
 
   // Form Inputs
@@ -24,9 +23,10 @@ export const LivePositionConsole: React.FC = () => {
   const [withdrawInput, setWithdrawInput] = useState<string>("");
   const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
-  // Derived Values
-  const uiAmount = rawCollateral * multiplier;
-  const collateralValueUsd = uiAmount * price;
+  // Derived Values under Valuation-Basis Integrity (TRV Rule)
+  // CANONICAL: collateralValueUsd = rawCollateral * price (NEVER multiplied by multiplier)
+  const uiAmount = rawCollateral * multiplier; // UI presentation ONLY
+  const collateralValueUsd = rawCollateral * price;
   const ltvBps = inGuardWindow ? 7000 : 7500; // 75% normally, 70% in guard window
   const maxDebtUsd = (collateralValueUsd * ltvBps) / 10000;
   const liqCollateralUsd = (collateralValueUsd * 8500) / 10000;
@@ -50,7 +50,7 @@ export const LivePositionConsole: React.FC = () => {
     }
     setRawCollateral((prev) => prev + val);
     setDepositInput("");
-    setActionNotice({ type: "success", msg: `Deposited ${val} raw ${selectedAsset}. Valuation updated dynamically.` });
+    setActionNotice({ type: "success", msg: `Deposited ${val} raw ${selectedAsset}. Valuation derived strictly via Total Return rule.` });
   };
 
   const handleBorrow = (e: React.FormEvent) => {
@@ -92,8 +92,7 @@ export const LivePositionConsole: React.FC = () => {
       return;
     }
     const remainingRaw = rawCollateral - val;
-    const remainingUi = remainingRaw * multiplier;
-    const remainingVal = remainingUi * price;
+    const remainingVal = remainingRaw * price;
     const remainingLiq = (remainingVal * 8500) / 10000;
     const newHf = debtAmount === 0 ? 999 : remainingLiq / debtAmount;
 
@@ -119,6 +118,12 @@ export const LivePositionConsole: React.FC = () => {
           <h2 className="font-serif text-3xl font-bold text-neutral-950 mt-1">
             Coinbase Stock Collateral Console
           </h2>
+          <div className="mt-2 flex items-center space-x-2 text-xs font-mono">
+            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 font-semibold">
+              CONTROLLED TEST ASSET (ControlledAAPLc)
+            </span>
+            <span className="text-neutral-500"> Tested against official Coinbase B20 token specifications</span>
+          </div>
         </div>
 
         {/* Asset Switcher */}
@@ -156,10 +161,21 @@ export const LivePositionConsole: React.FC = () => {
             <span>{actionNotice.msg}</span>
           </div>
           <button onClick={() => setActionNotice(null)} className="text-neutral-400 hover:text-neutral-600 font-bold ml-4">
-            ×
+            
           </button>
         </div>
       )}
+
+      {/* Valuation Basis Notification */}
+      <div className="p-3.5 rounded-lg bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between text-xs font-mono text-emerald-950">
+        <div className="flex items-center space-x-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-700" />
+          <span><strong>Valuation Basis Active:</strong> canonicalCollateralUSD = rawTokenAmount  Chainlink Total Return Price ($225.50). Multiplier is separated for UI display.</span>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 border border-emerald-300 font-bold uppercase">
+          Zero Double-Adjustment
+        </span>
+      </div>
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -178,7 +194,7 @@ export const LivePositionConsole: React.FC = () => {
           <div className="text-xl font-mono font-bold text-blue-700 mt-1">
             {multiplier.toFixed(2)}x
           </div>
-          <div className="text-[10px] font-mono text-neutral-400 mt-1">uiMultiplier()</div>
+          <div className="text-[10px] font-mono text-neutral-400 mt-1">uiMultiplier() [UI only]</div>
         </div>
 
         {/* Share Equivalent */}
@@ -190,15 +206,15 @@ export const LivePositionConsole: React.FC = () => {
           <div className="text-[10px] font-mono text-neutral-400 mt-1">balanceOfUI()</div>
         </div>
 
-        {/* Equity Price */}
+        {/* Total Return Price */}
         <div className="p-4 rounded-lg bg-white border border-neutral-200 shadow-sm">
-          <div className="text-[10px] font-mono text-neutral-500 uppercase">Validated Price</div>
+          <div className="text-[10px] font-mono text-neutral-500 uppercase">Total Return Price</div>
           <div className="text-xl font-mono font-bold text-neutral-900 mt-1">
             ${price.toFixed(2)}
           </div>
           <div className="text-[10px] font-mono text-emerald-600 mt-1 flex items-center space-x-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>Chainlink 24/5 Stream</span>
+            <span>Chainlink TRV Stream</span>
           </div>
         </div>
 
@@ -208,7 +224,7 @@ export const LivePositionConsole: React.FC = () => {
           <div className="text-xl font-mono font-bold text-emerald-700 mt-1">
             ${collateralValueUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
-          <div className="text-[10px] font-mono text-neutral-400 mt-1">Normalized USD WAD</div>
+          <div className="text-[10px] font-mono text-neutral-400 mt-1">rawTokenAmount  TRV</div>
         </div>
 
         {/* Health Factor */}
@@ -219,7 +235,7 @@ export const LivePositionConsole: React.FC = () => {
               healthFactor >= 1.5 ? "text-emerald-700" : healthFactor >= 1.0 ? "text-amber-600" : "text-red-600"
             }`}
           >
-            {healthFactor > 100 ? "∞" : healthFactor.toFixed(2)}
+            {healthFactor > 100 ? "8" : healthFactor.toFixed(2)}
           </div>
           <div className="text-[10px] font-mono text-neutral-400 mt-1">Min Safe: 1.00</div>
         </div>
@@ -270,19 +286,23 @@ export const LivePositionConsole: React.FC = () => {
 
             {/* Invariant Derivation Card */}
             <div className="p-4 rounded bg-neutral-50 border border-neutral-200 text-xs font-mono space-y-2">
-              <div className="text-neutral-500 font-semibold uppercase text-[10px]">Exact Execution Math</div>
+              <div className="text-neutral-500 font-semibold uppercase text-[10px]">Canonical Execution Math</div>
               <div className="space-y-1 text-neutral-700">
                 <div className="flex justify-between">
-                  <span>uiAmount:</span>
-                  <span className="font-semibold text-neutral-900">{rawCollateral} × {multiplier.toFixed(2)} = {uiAmount.toFixed(2)}</span>
+                  <span>rawCollateral:</span>
+                  <span className="font-semibold text-neutral-900">{rawCollateral} raw tokens</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>collateralVal:</span>
-                  <span className="font-semibold text-neutral-900">{uiAmount.toFixed(2)} × ${price.toFixed(2)} = ${collateralValueUsd.toLocaleString()}</span>
+                  <span>canonicalUSD:</span>
+                  <span className="font-semibold text-neutral-900">{rawCollateral}  ${price.toFixed(2)} = ${collateralValueUsd.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>uiShares (display only):</span>
+                  <span className="font-semibold text-blue-700">{rawCollateral}  {multiplier.toFixed(2)} = {uiAmount.toFixed(2)} shares</span>
                 </div>
                 <div className="flex justify-between">
                   <span>maxDebt:</span>
-                  <span className="font-semibold text-neutral-900">${collateralValueUsd.toLocaleString()} × {ltvBps / 10000} = ${maxDebtUsd.toLocaleString()}</span>
+                  <span className="font-semibold text-neutral-900">${collateralValueUsd.toLocaleString()}  {ltvBps / 10000} = ${maxDebtUsd.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -292,7 +312,7 @@ export const LivePositionConsole: React.FC = () => {
               <div className="text-xs font-mono text-neutral-500 uppercase tracking-wide">Simulator Overrides</div>
               <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                 <button
-                  onClick={() => setMultiplier((prev) => (prev === 1.0 ? 2.0 : prev === 2.0 ? 0.5 : 1.0))}
+                  onClick={() => setMultiplier((prev) => (prev === 1.0 ? 10.0 : prev === 10.0 ? 0.5 : 1.0))}
                   className="p-2 rounded border border-neutral-200 hover:bg-neutral-50 text-left"
                 >
                   <div className="text-[10px] text-neutral-400">Cycle Multiplier</div>
@@ -313,7 +333,7 @@ export const LivePositionConsole: React.FC = () => {
                   <div className="font-bold text-neutral-900">{isPaused ? "PAUSED (Fail-Closed)" : "NORMAL"}</div>
                 </button>
                 <button
-                  onClick={() => setPrice((prev) => (prev > 100 ? prev * 0.8 : prev * 1.25))}
+                  onClick={() => setPrice((prev) => (prev > 150 ? prev * 0.8 : prev * 1.25))}
                   className="p-2 rounded border border-neutral-200 hover:bg-neutral-50 text-left"
                 >
                   <div className="text-[10px] text-neutral-400">Shock Price</div>
@@ -364,7 +384,7 @@ export const LivePositionConsole: React.FC = () => {
               <span>Borrow Stablecoin</span>
             </div>
             <p className="text-xs text-neutral-500 font-sans leading-relaxed">
-              Re-evaluates live B20 multiplier & oracle price before minting USDC debt.
+              Re-evaluates live Total Return Price before minting USDC debt.
             </p>
             <form onSubmit={handleBorrow} className="space-y-3">
               <div className="relative">

@@ -18,14 +18,15 @@ This document catalogs the reproducible evidence artifacts generated across test
 
 | Artifact | Attack Vector | Baseline (Naive) Result | EQUIVANCE Defense Result | Verifier Status |
 | :--- | :--- | :--- | :--- | :--- |
-| [`A-stale-event-cache.json`](file:///proof/attacks/A-stale-event-cache.json) | Exploiting un-updated event cache across reverse stock split | **CRITICAL FAILURE**: \$150,000 bad debt borrowed against \$100,000 real collateral | **DEFENDED**: Borrow capped at \$75,000 using live 0.5x multiplier | `PASS` |
-| [`B-raw-ui-mismatch.json`](file:///proof/attacks/B-raw-ui-mismatch.json) | Supplying raw units where UI units expected | **COLLATERAL INFLATION**: 1000x borrow error | **DEFENDED**: Rejects unnormalized input; enforces WAD scalar conversion | `PASS` |
+| [`A-double-corporate-action.json`](file:///proof/attacks/A-double-corporate-action.json) | Double corporate action compounding (Multiplier × TRV) | **CRITICAL FAILURE**: $15,000 unbacked debt borrowed against $2,000 collateral | **DEFENDED**: Enforces canonical $1,500 borrow limit; double adjustment blocked | `PASS` |
+| [`B-raw-ui-mismatch.json`](file:///proof/attacks/B-raw-ui-mismatch.json) | Supplying raw units where UI units expected | **COLLATERAL INFLATION**: 10x borrow error | **DEFENDED**: Rejects unnormalized input; enforces WAD scalar conversion | `PASS` |
 | [`C-effectiveAt-boundary.json`](file:///proof/attacks/C-effectiveAt-boundary.json) | Racing transactions at timestamp $T-1$ vs $T+1$ | **DESYNC**: Stale valuation at $T+1$ | **DEFENDED**: Instantaneous revaluation at block timestamp $T$ with zero operator tx | `PASS` |
-| [`D-policy-allowance.json`](file:///proof/attacks/D-policy-allowance.json) | Un-authorized / non-allowlisted transfer despite token approval | **STUCK STATE / SILENT REVERT** | **DEFENDED**: Preflight transfer eligibility checks prevent corrupted state | `PASS` |
+| [`D-policy-allowance.json`](file:///proof/attacks/D-policy-allowance.json) | Un-authorized / non-allowlisted transfer despite token approval | **STUCK STATE / SILENT REVERT** | **DEFENDED**: Preflight SafeERC20 transfer checks prevent corrupted state | `PASS` |
 | [`E-pause-boundary.json`](file:///proof/attacks/E-pause-boundary.json) | Executing credit actions during asset transfer pause | **INCONSISTENCY**: Debt minted for un-withdrawable collateral | **DEFENDED**: Fails closed; blocks borrow & withdraw during paused state | `PASS` |
 
 ## 3. Differential Fuzzing Report (`proof/differential_fuzz_report.json`)
 - **Total Scenarios Evaluated**: 5,000 randomized position states.
-- **Parameters Sampled**: Multipliers ($0.01\text{x}$ to $100\text{x}$), Raw balances ($1$ to $10^{12}$ tokens), Equity prices (\$0.10 to \$50,000.00), Timestamps ($T - 10000$ to $T + 10000$).
+- **Parameters Sampled**: Multipliers ($0.01\text{x}$ to $100\text{x}$), Raw balances ($1$ to $10^{12}$ tokens), Total Return Prices (\$0.10 to \$50,000.00), Timestamps ($T - 10000$ to $T + 10000$).
 - **Solidity RiskEngine vs Reference Model Discrepancies**: 0 (Exact WAD match within 1 wei fixed-point rounding).
 - **Execution Evidence**: Recorded in `proof/differential_fuzz_report.json`.
+

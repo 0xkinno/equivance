@@ -1,6 +1,6 @@
-const fs = require("fs");
-const path = require("path");
-const { evaluateReferenceModel } = require("../verifier/reference_model.js");
+const fs = require('fs');
+const path = require('path');
+const { evaluateReferenceModel } = require('../verifier/reference_model.js');
 
 function randomBigInt(min, max) {
   const range = max - min;
@@ -9,7 +9,7 @@ function randomBigInt(min, max) {
 }
 
 function runDifferentialFuzz(iterations = 5000) {
-  console.log(`Starting differential fuzzing across ${iterations} randomized scenarios...`);
+  console.log('Starting differential fuzzing across ' + iterations + ' randomized scenarios...');
 
   const WAD = 10n ** 18n;
   let passed = 0;
@@ -41,12 +41,12 @@ function runDifferentialFuzz(iterations = 5000) {
     const effectiveAt = hasPending ? baseTimestamp : 0;
     const pendingMultiplier = hasPending ? randomBigInt(1n * WAD, 10n * WAD).toString() : undefined;
 
-    const oraclePrice = randomBigInt(10000000n, 5000000000000n).toString(); // $0.10 to $50,000
-    const debtAmountUsd = Math.random() < 0.2 ? "0" : randomBigInt(1n * WAD, 1000000n * WAD).toString();
+    const oraclePrice = randomBigInt(10000000n, 5000000000000n).toString(); // .10 to ,000
+    const debtAmountUsd = Math.random() < 0.2 ? '0' : randomBigInt(1n * WAD, 1000000n * WAD).toString();
 
     if (isReverseSplit) edgeCasesTested.reverseSplits++;
     else edgeCasesTested.forwardSplits++;
-    if (debtAmountUsd === "0") edgeCasesTested.zeroDebt++;
+    if (debtAmountUsd === '0') edgeCasesTested.zeroDebt++;
     if (rawBalance < 1000n) edgeCasesTested.microBalances++;
     if (rawBalance > 1000000n * WAD) edgeCasesTested.largeBalances++;
 
@@ -54,7 +54,7 @@ function runDifferentialFuzz(iterations = 5000) {
       chainId: 8453,
       blockNumber: 20000000 + i,
       blockTimestamp,
-      asset: "0x4B384A96BEaB552F2f6385d532881267D5a7e6b0",
+      asset: '0x7047D67Ef69F40F9340Fd97EDF79276458238cfe',
       rawBalance: rawBalance.toString(),
       currentMultiplier: multiplier.toString(),
       pendingMultiplier,
@@ -70,12 +70,12 @@ function runDifferentialFuzz(iterations = 5000) {
 
     try {
       const result = evaluateReferenceModel(input);
-      if (result.collateralValueUsd >= 0n && result.maxDebtUsd >= 0n) {
+      if (result.canonicalCollateralUSD >= 0n && result.maxDebtUsd >= 0n && result.multiplierAppliedToValue === false) {
         passed++;
       } else {
         failed++;
       }
-    } catch {
+    } catch (e) {
       failed++;
     }
   }
@@ -83,22 +83,23 @@ function runDifferentialFuzz(iterations = 5000) {
   const durationMs = Date.now() - startTime;
 
   const report = {
-    suite: "EQUIVANCE Differential Fuzzing Engine",
+    suite: 'EQUIVANCE Differential Fuzzing Engine',
+    valuationBasis: 'RAW_X_TOTAL_RETURN',
     totalIterations: iterations,
     passed,
     failed,
     durationMs,
     edgeCasesTested,
-    status: failed === 0 ? "ALL_SCENARIOS_PASSED" : "DISCREPANCIES_DETECTED",
+    status: failed === 0 ? 'ALL_SCENARIOS_PASSED' : 'DISCREPANCIES_DETECTED',
     timestamp: new Date().toISOString(),
   };
 
-  const outPath = path.join(__dirname, "differential_fuzz_report.json");
+  const outPath = path.join(__dirname, 'differential_fuzz_report.json');
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(report, null, 2));
 
-  console.log(`Differential Fuzzing Completed: ${passed}/${iterations} Passed in ${durationMs}ms`);
-  console.log(`Report written to ${outPath}`);
+  console.log('Differential Fuzzing Completed: ' + passed + '/' + iterations + ' Passed in ' + durationMs + 'ms');
+  console.log('Report written to ' + outPath);
   return report;
 }
 

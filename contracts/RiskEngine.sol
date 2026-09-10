@@ -7,8 +7,10 @@ import "./interfaces/IAggregatorV3.sol";
 
 /**
  * @title RiskEngine
- * @notice Centralized valuation and underwriting kernel for EQUIVANCE protocol
- * @dev Single-source-of-truth for evaluating collateral value, borrowing capacity, and solvency
+ * @notice Centralized valuation and underwriting kernel enforcing Valuation-Basis Integrity
+ * @dev Single-source-of-truth ensuring canonical Total Return Value (TRV) pricing:
+ *      canonicalCollateralUSD = rawTokenAmount * totalReturnPrice
+ *      NEVER compounds B20 multiplier into Total Return Price.
  */
 contract RiskEngine {
     using PositionMath for uint256;
@@ -37,19 +39,21 @@ contract RiskEngine {
     }
 
     struct EvaluationResult {
-        uint256 rawCollateral;
+        uint256 rawTokenAmount;
         uint256 effectiveMultiplier;
-        uint256 uiCollateral;
-        uint256 oraclePrice;
+        uint256 uiShareAmount;
+        uint256 totalReturnPrice8;
         uint8 oracleDecimals;
         uint8 assetDecimals;
-        uint256 collateralValueUsd;
-        uint256 maxDebtUsd;
-        uint256 totalDebtUsd;
+        uint256 collateralUsdWad;
+        uint256 naiveDoubleAdjustedUsdWad;
+        uint256 maxDebtUsdWad;
+        uint256 totalDebtUsdWad;
         uint256 healthFactor;
         PositionStatus status;
         bool isHealthy;
         bool isLiquidatable;
+        bool doubleAdjustmentBlocked;
     }
 
     address public owner;
@@ -109,16 +113,43 @@ contract RiskEngine {
     }
 
     /**
-     * @notice Canonical evaluation function called prior to ANY risk mutation
+     * @notice Canonical collateral valuation function (Task 1 interface requirement)
+     * @dev Never receives or multiplies the B20 multiplier into the Total Return Price.
+     * @param asset Asset address
+     * @param rawTokenAmount Raw token units
+     * @param totalReturnPrice Oracle total return price
+     * @return collateralUsdWad Normalized 18-decimal USD collateral value
+     */
+    function valueCollateral(
+        address asset,
+        uint256 rawTokenAmount,
+        uint256 totalReturnPrice
+    ) public view returns (uint256 collateralUsdWad) {
+        AssetRiskConfig memory config = assetConfigs[asset];
+        if (!config.isSupported) revert AssetNotSupported(asset);
+        
+        B20StateReader.B20State memory b20State = stateReader.getB20State(asset, address(this));
+        (, uint8 oracleDecimals, ) = _fetchPrice(config.priceFeed, config.maxOracleDelay);
+        
+        collateralUsdWad = PositionMath.valueCollateral(
+            rawTokenAmount,
+            totalReturnPrice,
+            oracleDecimals,
+            b20State.decimals
+        );
+    }
+
+    /**
+     * @notice Canonical position evaluation called prior to ANY risk mutation
      * @param asset Address of the collateral asset
-     * @param rawCollateral Raw deposited token balance
-     * @param debtAmount Current outstanding debt in USD WAD
+     * @param rawTokenAmount Raw deposited token balance
+     * @param debtAmountUsdWad Current outstanding debt in USD WAD
      * @return res Detailed EvaluationResult struct
      */
     function evaluatePosition(
         address asset,
-        uint256 rawCollateral,
-        uint256 debtAmount
+        uint256 rawTokenAmount,
+        uint256 debtAmountUsdWad
     ) public view returns (EvaluationResult memory res) {
         AssetRiskConfig memory config = assetConfigs[asset];
         if (!config.isSupported) revert AssetNotSupported(asset);
@@ -126,28 +157,40 @@ contract RiskEngine {
         // 1. Extract live B20 state at current block.timestamp
         B20StateReader.B20State memory b20State = stateReader.getB20State(asset, address(this));
         
-        // 2. Read and validate oracle price
+        // 2. Read and validate oracle total return price
         (uint256 price, uint8 oracleDecimals, bool oracleStale) = _fetchPrice(config.priceFeed, config.maxOracleDelay);
 
-        res.rawCollateral = rawCollateral;
+        res.rawTokenAmount = rawTokenAmount;
         res.effectiveMultiplier = b20State.effectiveMultiplier;
         res.assetDecimals = b20State.decimals;
-        res.oraclePrice = price;
+        res.totalReturnPrice8 = price;
         res.oracleDecimals = oracleDecimals;
-        res.totalDebtUsd = debtAmount;
+        res.totalDebtUsdWad = debtAmountUsdWad;
 
-        // 3. Compute live UI collateral amount
-        res.uiCollateral = PositionMath.toUIAmount(rawCollateral, b20State.effectiveMultiplier);
+        // 3. Compute live UI share-equivalent amount (for UI presentation and reporting ONLY)
+        res.uiShareAmount = PositionMath.toUIShareAmount(rawTokenAmount, b20State.effectiveMultiplier);
 
-        // 4. Compute normalized collateral valuation in USD WAD
-        res.collateralValueUsd = PositionMath.calculateCollateralValue(
-            res.uiCollateral,
+        // 4. Compute canonical collateral valuation: rawTokenAmount * totalReturnPrice
+        // IMPORTANT: NEVER multiply effectiveMultiplier into totalReturnPrice!
+        res.collateralUsdWad = PositionMath.valueCollateral(
+            rawTokenAmount,
             price,
             oracleDecimals,
             res.assetDecimals
         );
 
-        // 5. Check Transition Guard Window
+        // 5. Compute naive double-adjusted valuation (for baseline comparison & attack detection)
+        res.naiveDoubleAdjustedUsdWad = PositionMath.calculateNaiveDoubleAdjustedUSD(
+            rawTokenAmount,
+            price,
+            b20State.effectiveMultiplier,
+            oracleDecimals,
+            res.assetDecimals
+        );
+
+        res.doubleAdjustmentBlocked = (b20State.effectiveMultiplier != WAD);
+
+        // 6. Check Transition Guard Window
         uint16 activeLtv = config.ltvBps;
         bool inGuardWindow = false;
         if (b20State.hasLivePending) {
@@ -160,22 +203,22 @@ contract RiskEngine {
             }
         }
 
-        // 6. Calculate Max Debt
-        res.maxDebtUsd = PositionMath.calculateMaxDebt(res.collateralValueUsd, activeLtv);
+        // 7. Calculate Max Debt
+        res.maxDebtUsdWad = PositionMath.calculateMaxDebt(res.collateralUsdWad, activeLtv);
 
-        // 7. Calculate Health Factor
+        // 8. Calculate Health Factor
         res.healthFactor = PositionMath.calculateHealthFactor(
-            res.collateralValueUsd,
+            res.collateralUsdWad,
             config.liquidationThresholdBps,
-            debtAmount
+            debtAmountUsdWad
         );
 
-        // 8. Determine Status
+        // 9. Determine Status
         if (b20State.transferPaused) {
             res.status = PositionStatus.BLOCKED;
         } else if (oracleStale) {
             res.status = PositionStatus.STALE_ORACLE;
-        } else if (res.healthFactor < WAD && debtAmount > 0) {
+        } else if (res.healthFactor < WAD && debtAmountUsdWad > 0) {
             res.status = PositionStatus.LIQUIDATABLE;
         } else if (inGuardWindow) {
             res.status = PositionStatus.TRANSITION;
@@ -186,7 +229,7 @@ contract RiskEngine {
         }
 
         res.isHealthy = res.healthFactor >= WAD;
-        res.isLiquidatable = res.healthFactor < WAD && debtAmount > 0;
+        res.isLiquidatable = res.healthFactor < WAD && debtAmountUsdWad > 0;
     }
 
     /**

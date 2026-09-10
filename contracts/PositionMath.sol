@@ -4,11 +4,23 @@ pragma solidity ^0.8.20;
 /**
  * @title PositionMath
  * @notice Stateless, pure fixed-point arithmetic library for B20 equity credit valuation
- * @dev All values normalized to 18-decimal WAD standard unless specified otherwise.
+ * @dev Enforces valuation-basis integrity:
+ * 
+ * CORE VALUATION INVARIANT:
+ * 1. For Coinbase Tokenized-Stock Total Return Value (TRV) Feeds:
+ *      canonicalCollateralUSD = rawTokenAmount * totalReturnPrice
+ *    The B20 multiplier is NEVER multiplied into totalReturnPrice (which would double-compound corporate actions).
+ * 
+ * 2. For Decomposed Underlying Pricing (non-TRV):
+ *      decomposedCollateralUSD = rawTokenAmount * underlyingPrice * uiMultiplier
+ * 
+ * 3. The B20 multiplier is used separately for:
+ *    - UI / share-equivalent reporting (uiShareAmount = rawTokenAmount * multiplier / 1e18)
+ *    - Transition inspection and consistency verification
+ * 
  * Rounding policy:
  * - Collateral valuation rounds DOWN (solvency favorable)
  * - Debt computation rounds UP
- * - Multiplier conversions use explicit 1e18 scaling
  */
 library PositionMath {
     uint256 internal constant WAD = 1e18;
@@ -16,137 +28,160 @@ library PositionMath {
 
     error DivisionByZero();
     error InvalidMultiplier();
-    error DecimalsOutOfBounds();
 
     /**
-     * @notice Converts raw ERC-20 token amount to scaled UI amount
-     * @param rawAmount Unscaled token balance from balanceOf()
-     * @param multiplier Current effective multiplier in WAD (1e18 = 1.0x)
-     * @return uiAmount Scaled share-equivalent amount in token's native decimals
+     * @notice Converts raw ERC-20 token amount to scaled UI / share-equivalent representation
+     * @dev Used for UI presentation, share counting, and sanity assertions ONLY. NEVER used in total-return valuation.
+     * @param rawTokenAmount Raw unscaled token balance from balanceOf()
+     * @param uiMultiplierWad Current effective multiplier in WAD (1e18 = 1.0x)
+     * @return uiShareAmount Scaled share-equivalent amount in token's native decimals
      */
-    function toUIAmount(uint256 rawAmount, uint256 multiplier) internal pure returns (uint256 uiAmount) {
-        if (multiplier == 0) revert InvalidMultiplier();
-        uiAmount = (rawAmount * multiplier) / WAD;
+    function toUIShareAmount(uint256 rawTokenAmount, uint256 uiMultiplierWad) internal pure returns (uint256 uiShareAmount) {
+        if (uiMultiplierWad == 0) revert InvalidMultiplier();
+        uiShareAmount = (rawTokenAmount * uiMultiplierWad) / WAD;
     }
 
     /**
-     * @notice Converts scaled UI amount back to raw ERC-20 token amount
-     * @param uiAmount Scaled share-equivalent amount
-     * @param multiplier Current effective multiplier in WAD (1e18 = 1.0x)
-     * @return rawAmount Raw token balance
+     * @notice Converts UI share amount back to raw token amount
+     * @param uiShareAmount Scaled share-equivalent amount
+     * @param uiMultiplierWad Current effective multiplier in WAD (1e18 = 1.0x)
+     * @return rawTokenAmount Raw token balance
      */
-    function toRawAmount(uint256 uiAmount, uint256 multiplier) internal pure returns (uint256 rawAmount) {
-        if (multiplier == 0) revert InvalidMultiplier();
-        rawAmount = (uiAmount * WAD) / multiplier;
+    function toRawTokenAmount(uint256 uiShareAmount, uint256 uiMultiplierWad) internal pure returns (uint256 rawTokenAmount) {
+        if (uiMultiplierWad == 0) revert InvalidMultiplier();
+        rawTokenAmount = (uiShareAmount * WAD) / uiMultiplierWad;
     }
 
     /**
-     * @notice Normalizes an amount from native asset decimals to 18-decimal WAD
+     * @notice Normalizes an amount from native token decimals to 18-decimal WAD
      */
-    function normalizeToWad(uint256 amount, uint8 decimals) internal pure returns (uint256) {
-        if (decimals == 18) {
-            return amount;
-        } else if (decimals < 18) {
-            return amount * (10 ** (18 - decimals));
+    function normalizeToWad(uint256 tokenAmount, uint8 tokenDecimals) internal pure returns (uint256) {
+        if (tokenDecimals == 18) {
+            return tokenAmount;
+        } else if (tokenDecimals < 18) {
+            return tokenAmount * (10 ** (18 - tokenDecimals));
         } else {
-            return amount / (10 ** (decimals - 18));
+            return tokenAmount / (10 ** (tokenDecimals - 18));
         }
     }
 
     /**
-     * @notice Denormalizes a 18-decimal WAD amount to native asset decimals
+     * @notice Denormalizes an 18-decimal WAD amount to native token decimals
      */
-    function denormalizeFromWad(uint256 wadAmount, uint8 decimals) internal pure returns (uint256) {
-        if (decimals == 18) {
+    function denormalizeFromWad(uint256 wadAmount, uint8 tokenDecimals) internal pure returns (uint256) {
+        if (tokenDecimals == 18) {
             return wadAmount;
-        } else if (decimals < 18) {
-            return wadAmount / (10 ** (18 - decimals));
+        } else if (tokenDecimals < 18) {
+            return wadAmount / (10 ** (18 - tokenDecimals));
         } else {
-            return wadAmount * (10 ** (decimals - 18));
+            return wadAmount * (10 ** (tokenDecimals - 18));
         }
     }
 
     /**
-     * @notice Computes total collateral valuation in 18-decimal USD WAD
-     * @param uiAmount Effective UI share-equivalent amount (native token decimals)
-     * @param price Current equity oracle price
-     * @param oracleDecimals Decimals of oracle price (typically 8 for Chainlink USD feeds)
-     * @param assetDecimals Decimals of the tokenized asset (typically 18)
-     * @return collateralValueUsd Total collateral value in 18-decimal USD WAD
+     * @notice Canonical Collateral Valuation for Coinbase Total Return Value (TRV) Feeds
+     * @dev Rule: canonicalCollateralUSD = rawTokenAmount * totalReturnPrice
+     * NEVER multiplies uiMultiplier into totalReturnPrice.
+     * @param rawTokenAmount Raw B20 token units from balanceOf()
+     * @param totalReturnPrice8 Oracle total return price (typically 8 decimals)
+     * @param oracleDecimals Price oracle decimals (e.g. 8)
+     * @param assetDecimals Raw token decimals (e.g. 18)
+     * @return collateralUsdWad Normalized collateral valuation in 18-decimal USD WAD
      */
-    function calculateCollateralValue(
-        uint256 uiAmount,
-        uint256 price,
+    function valueCollateral(
+        uint256 rawTokenAmount,
+        uint256 totalReturnPrice8,
         uint8 oracleDecimals,
         uint8 assetDecimals
-    ) internal pure returns (uint256 collateralValueUsd) {
-        if (uiAmount == 0 || price == 0) return 0;
-        uint256 normalizedUi = normalizeToWad(uiAmount, assetDecimals);
-        uint256 normalizedPrice = normalizeToWad(price, oracleDecimals);
+    ) internal pure returns (uint256 collateralUsdWad) {
+        if (rawTokenAmount == 0 || totalReturnPrice8 == 0) return 0;
+        uint256 normalizedRaw = normalizeToWad(rawTokenAmount, assetDecimals);
+        uint256 normalizedPrice = normalizeToWad(totalReturnPrice8, oracleDecimals);
 
         // Result is in WAD: (1e18 * 1e18) / 1e18 = 1e18
-        collateralValueUsd = (normalizedUi * normalizedPrice) / WAD;
+        collateralUsdWad = (normalizedRaw * normalizedPrice) / WAD;
+    }
+
+    /**
+     * @notice Decomposed Collateral Valuation (only used when pricing raw underlying equity with external multiplier)
+     * @dev Rule: rawTokenAmount * underlyingPrice * uiMultiplier
+     */
+    function calculateDecomposedCollateralUSD(
+        uint256 rawTokenAmount,
+        uint256 underlyingPrice8,
+        uint256 uiMultiplierWad,
+        uint8 oracleDecimals,
+        uint8 assetDecimals
+    ) internal pure returns (uint256 decomposedCollateralUsdWad) {
+        if (rawTokenAmount == 0 || underlyingPrice8 == 0 || uiMultiplierWad == 0) return 0;
+        uint256 normalizedRaw = normalizeToWad(rawTokenAmount, assetDecimals);
+        uint256 normalizedPrice = normalizeToWad(underlyingPrice8, oracleDecimals);
+        uint256 rawValuation = (normalizedRaw * normalizedPrice) / WAD;
+        decomposedCollateralUsdWad = (rawValuation * uiMultiplierWad) / WAD;
+    }
+
+    /**
+     * @notice Naive (Flawed) Valuation for baseline and attack demonstration
+     * @dev Flaw: compounds multiplier into Total Return Price -> raw * multiplier * TRV
+     */
+    function calculateNaiveDoubleAdjustedUSD(
+        uint256 rawTokenAmount,
+        uint256 totalReturnPrice8,
+        uint256 uiMultiplierWad,
+        uint8 oracleDecimals,
+        uint8 assetDecimals
+    ) internal pure returns (uint256 naiveDoubleAdjustedUsdWad) {
+        uint256 canonical = valueCollateral(rawTokenAmount, totalReturnPrice8, oracleDecimals, assetDecimals);
+        if (uiMultiplierWad == 0) return canonical;
+        naiveDoubleAdjustedUsdWad = (canonical * uiMultiplierWad) / WAD;
     }
 
     /**
      * @notice Computes maximum safe borrowing capacity given LTV
-     * @param collateralValueUsd Collateral value in 18-decimal USD WAD
+     * @param collateralUsdWad Collateral value in 18-decimal USD WAD
      * @param ltvBps Loan-to-Value in basis points (e.g. 7500 for 75%)
-     * @return maxDebtUsd Maximum allowable debt in 18-decimal USD WAD
+     * @return maxDebtUsdWad Maximum allowable debt in 18-decimal USD WAD
      */
-    function calculateMaxDebt(uint256 collateralValueUsd, uint256 ltvBps) internal pure returns (uint256 maxDebtUsd) {
-        maxDebtUsd = (collateralValueUsd * ltvBps) / BPS_DENOMINATOR;
+    function calculateMaxDebt(uint256 collateralUsdWad, uint256 ltvBps) internal pure returns (uint256 maxDebtUsdWad) {
+        maxDebtUsdWad = (collateralUsdWad * ltvBps) / BPS_DENOMINATOR;
     }
 
     /**
      * @notice Computes position health factor in WAD (1e18 = 100% threshold)
-     * @param collateralValueUsd Collateral value in 18-decimal USD WAD
+     * @param collateralUsdWad Collateral value in 18-decimal USD WAD
      * @param liquidationThresholdBps Liquidation threshold in BPS (e.g. 8500 = 85%)
-     * @param totalDebtUsd Outstanding debt in 18-decimal USD WAD
-     * @return healthFactor Health ratio (1e18 = liquidation boundary, >1e18 = healthy)
+     * @param totalDebtUsdWad Outstanding debt in 18-decimal USD WAD
+     * @return healthFactorWad Health ratio (1e18 = liquidation boundary, >1e18 = healthy)
      */
     function calculateHealthFactor(
-        uint256 collateralValueUsd,
+        uint256 collateralUsdWad,
         uint256 liquidationThresholdBps,
-        uint256 totalDebtUsd
-    ) internal pure returns (uint256 healthFactor) {
-        if (totalDebtUsd == 0) {
+        uint256 totalDebtUsdWad
+    ) internal pure returns (uint256 healthFactorWad) {
+        if (totalDebtUsdWad == 0) {
             return type(uint256).max;
         }
-        uint256 liquidationCollateral = (collateralValueUsd * liquidationThresholdBps) / BPS_DENOMINATOR;
-        healthFactor = (liquidationCollateral * WAD) / totalDebtUsd;
+        uint256 liquidationCollateral = (collateralUsdWad * liquidationThresholdBps) / BPS_DENOMINATOR;
+        healthFactorWad = (liquidationCollateral * WAD) / totalDebtUsdWad;
     }
 
     /**
-     * @notice Calculates required collateral to seize during liquidation
-     * @param debtToRepayUsd Amount of debt being liquidated in USD WAD
-     * @param price Current equity oracle price
-     * @param oracleDecimals Oracle decimals
-     * @param assetDecimals Asset decimals
-     * @param liquidationPenaltyBps Liquidation bonus/penalty BPS (e.g. 500 = 5%)
-     * @param multiplier Current effective multiplier in WAD
-     * @return rawCollateralToSeize Amount of raw B20 tokens to transfer to liquidator
-     * @return uiCollateralSeized Amount of UI share-equivalent seized
+     * @notice Calculates required raw collateral to seize during liquidation
+     * @dev Under TRV pricing: rawToSeize = debtWithBonus / totalReturnPrice
      */
     function calculateLiquidationCollateral(
-        uint256 debtToRepayUsd,
-        uint256 price,
+        uint256 debtToRepayUsdWad,
+        uint256 totalReturnPrice8,
         uint8 oracleDecimals,
         uint8 assetDecimals,
-        uint256 liquidationPenaltyBps,
-        uint256 multiplier
-    ) internal pure returns (uint256 rawCollateralToSeize, uint256 uiCollateralSeized) {
-        if (price == 0) revert DivisionByZero();
-        if (multiplier == 0) revert InvalidMultiplier();
+        uint256 liquidationPenaltyBps
+    ) internal pure returns (uint256 rawTokenToSeize) {
+        if (totalReturnPrice8 == 0) revert DivisionByZero();
+        uint256 normalizedPrice = normalizeToWad(totalReturnPrice8, oracleDecimals);
+        uint256 valueWithBonus = (debtToRepayUsdWad * (BPS_DENOMINATOR + liquidationPenaltyBps)) / BPS_DENOMINATOR;
 
-        uint256 normalizedPrice = normalizeToWad(price, oracleDecimals);
-        uint256 valueWithBonus = (debtToRepayUsd * (BPS_DENOMINATOR + liquidationPenaltyBps)) / BPS_DENOMINATOR;
-
-        // UI amount in WAD: (valueWithBonus * 1e18) / normalizedPrice
-        uint256 uiAmountWad = (valueWithBonus * WAD) / normalizedPrice;
-        uiCollateralSeized = denormalizeFromWad(uiAmountWad, assetDecimals);
-
-        // Convert UI amount to raw token units
-        rawCollateralToSeize = toRawAmount(uiCollateralSeized, multiplier);
+        // Raw amount in WAD: (valueWithBonus * 1e18) / normalizedPrice
+        uint256 rawWad = (valueWithBonus * WAD) / normalizedPrice;
+        rawTokenToSeize = denormalizeFromWad(rawWad, assetDecimals);
     }
 }

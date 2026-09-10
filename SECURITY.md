@@ -2,9 +2,9 @@
 
 ## 1. Threat Model & Attack Vectors
 
-### Vector A: Stale Multiplier Cache Invalidation
-- **Threat**: An attacker identifies a scheduled multiplier update and triggers lending actions immediately after $T$ on protocols using offchain indexers or cached parameters.
-- **Mitigation**: `EQUIVANCEVault` invokes `B20StateReader.getState()`, performing an internal read of `IB20Asset.uiMultiplier()` at the exact execution block timestamp. Storage caching of the multiplier is strictly prohibited.
+### Vector A: Double Corporate Action Adjustment & Multiplier Compounding
+- **Threat**: Compounding the B20 multiplier on top of Coinbase Chainlink Total Return Value (TRV) price feeds, which already incorporate corporate actions, creating severe overvaluation and unbacked debt.
+- **Mitigation**: `PositionMath.sol` and `RiskEngine.sol` enforce strict Valuation-Basis Integrity: `canonicalCollateralUSD = rawTokenAmount * TRV`. The multiplier is never multiplied into TRV. Storage caching of multipliers is strictly prohibited.
 
 ### Vector B: Unit Mismatch & Precision Inflation
 - **Threat**: Supplying raw token amounts where UI amounts are expected or exploiting precision truncated division in fixed-point conversions.

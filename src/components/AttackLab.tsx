@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { AlertOctagon, ShieldCheck, Terminal, Play, FileJson, CheckCircle2, XCircle, ArrowRight } from "lucide-react";
+import { AlertOctagon, ShieldCheck, Terminal, Play, FileJson, CheckCircle2, XCircle, ArrowRight, ShieldAlert } from "lucide-react";
 
 interface AttackScenario {
   id: string;
   name: string;
   title: string;
   vector: string;
+  fault: string;
   description: string;
   naiveBehavior: string;
   equivanceDefense: string;
@@ -18,29 +19,38 @@ interface AttackScenario {
 const attacks: AttackScenario[] = [
   {
     id: "A",
-    name: "Attack A: Stale Event/Indexer State",
-    title: "Reverse Stock Split Eventless Boundary Exploit",
-    vector: "Indexer/Event-Only Cache Stale Invalidation",
+    name: "Attack A: Double Corporate Action Adjustment",
+    title: "Total Return Oracle vs. Multiplier Double-Compounding",
+    vector: "Compounding B20 Multiplier on top of Total Return Oracle (TRV)",
+    fault: "B20 multiplier already embedded in total-return oracle",
     description:
-      "A 1-for-2 reverse stock split is scheduled (multiplier 1.0x -> 0.5x). At maturity T, no onchain event is emitted. An attacker attempts to borrow against the stale 1.0x multiplier to withdraw 2x unbacked stablecoins.",
-    naiveBehavior: "CRITICAL INSOLVENCY: NaiveVault lends $150,000 against $100,000 real collateral ($75,000 bad debt).",
-    equivanceDefense: "DEFENDED: Derives live 0.5x multiplier on read at current block timestamp, rejecting over-borrow.",
-    receiptPath: "proof/attacks/A-stale-event-cache.json",
+      "A 10:1 forward stock split is executed. Coinbase's Chainlink feed reports Total Return Value that already incorporates the corporate action ($200 TRV). A naive protocol multiplies the 10.0x B20 multiplier on top of TRV, calculating $20,000 collateral for 10 raw tokens ($2,000 real value). Attacker attempts to borrow $15,000 unbacked stablecoins.",
+    naiveBehavior: "NAIVE: raw × multiplier × TRV = $20,000 valuation. Issues $15,000 unbacked debt against $2,000 real collateral (10x overvaluation).",
+    equivanceDefense: "EQUIVANCE: raw × TRV = $2,000 canonical valuation. Enforces strict $1,500 borrowing limit. DOUBLE ADJUSTMENT BLOCKED.",
+    receiptPath: "proof/attacks/A-double-corporate-action.json",
     defaultReceipt: {
-      attackId: "ATTACK-A-STALE-EVENT-CACHE",
-      scenario: "Reverse stock split (1.0x -> 0.5x) with eventless timestamp maturity",
-      naiveBaselineResult: {
-        vulnerability: "CRITICAL_INSOLVENCY",
-        unbackedDebtMintedUsd: "150000000000000000000000",
-        badDebtCreatedUsd: "75000000000000000000000",
+      attackId: "ATTACK-A-DOUBLE-CORPORATE-ACTION",
+      fault: "B20 multiplier already embedded in total-return oracle",
+      parameters: {
+        rawTokenAmount: "10.0",
+        b20Multiplier: "10.0",
+        uiShareAmount: "100.0",
+        chainlinkTotalReturnPrice: "200.0"
       },
-      equivanceDefenseResult: {
-        status: "DEFENDED",
-        rejectionReason: "InsufficientCollateral",
-        enforcedMaxDebtUsd: "75000000000000000000000",
-        solvencyPreserved: true,
-      },
-      verifierStatus: "PASS",
+      naiveFormula: "rawTokenAmount * b20Multiplier * chainlinkTotalReturnPrice",
+      naiveValuationUSD: "20000.0",
+      naiveDebtMintedUSD: "15000.0",
+      equivanceFormula: "rawTokenAmount * chainlinkTotalReturnPrice",
+      canonicalValuationUSD: "2000.0",
+      enforcedMaxDebtUSD: "1500.0",
+      result: "DOUBLE ADJUSTMENT BLOCKED",
+      humanReadableSummary: [
+        "FAULT: B20 multiplier already embedded in total-return oracle",
+        "NAIVE: 10 raw * 10.0 multiplier * $200 TRV = $20,000 USD (Permits $15,000 unbacked debt)",
+        "EQUIVANCE: 10 raw * $200 TRV = $2,000 USD (Enforces strict $1,500 borrowing limit)",
+        "RESULT: DOUBLE ADJUSTMENT BLOCKED (Solvency preserved)"
+      ],
+      verifierStatus: "PASS"
     },
   },
   {
@@ -48,6 +58,7 @@ const attacks: AttackScenario[] = [
     name: "Attack B: Raw vs UI Unit Confusion",
     title: "Unit Mismatch & Precision Inflation Attack",
     vector: "Supplying raw token balance where UI share-equivalents expected",
+    fault: "Confusing raw transfer units with UI share units",
     description:
       "Attacker deposits an asset with a 0.1x multiplier and attempts to leverage raw token balance (100 raw) as 100 UI shares ($20,000 value) instead of the true 10 UI shares ($2,000 value).",
     naiveBehavior: "COLLATERAL INFLATION: Lends $15,000 debt on $2,000 collateral (10x over-leverage).",
@@ -58,8 +69,9 @@ const attacks: AttackScenario[] = [
       scenario: "Attempting to leverage raw balance without UI multiplier scaling",
       inputRawAmount: "100000000000000000000",
       multiplier: "100000000000000000",
-      computedUIAmount: "10000000000000000000",
-      maxDebtAllowedUsd: "1500000000000000000000",
+      computedUIShareAmount: "10000000000000000000",
+      collateralValueEnforcedUsd: "20000000000000000000000",
+      maxDebtAllowedUsd: "15000000000000000000000",
       defenseStatus: "DEFENDED",
       verifierStatus: "PASS",
     },
@@ -69,6 +81,7 @@ const attacks: AttackScenario[] = [
     name: "Attack C: Pending Transition Boundary",
     title: "Boundary Frontrunning & Leverage Race",
     vector: "Racing transactions across T-1 and T boundary",
+    fault: "Pre-maturity frontrunning window during corporate action schedule",
     description:
       "Attacker attempts to open maximum leverage in the final seconds prior to effectiveAt without accounting for transition guard windows.",
     naiveBehavior: "DESYNCHRONIZATION: Allows full leverage up to T-1, risking bad debt if post-split price gaps.",
@@ -87,6 +100,7 @@ const attacks: AttackScenario[] = [
     name: "Attack D: Policy / Allowance Trap",
     title: "ERC-20 Allowance vs Issuer Allowlist Disconnect",
     vector: "Preflight transfer validation failure",
+    fault: "Issuer allowlist rejection despite valid token approval",
     description:
       "User has approved max ERC-20 token allowance, but is not on the institutional issuer compliance allowlist.",
     naiveBehavior: "STUCK STATE: Internal accounting registers deposit before verifying transfer, corrupting state.",
@@ -105,6 +119,7 @@ const attacks: AttackScenario[] = [
     name: "Attack E: Pause Boundary Fail-Closed",
     title: "Issuer Emergency Pause Violation",
     vector: "Executing credit actions during asset market halt",
+    fault: "State mutations executed while underlying asset is paused",
     description:
       "Issuer triggers emergency pause during market halt. Attacker attempts to withdraw collateral or borrow debt.",
     naiveBehavior: "INCONSISTENCY: Protocol allows borrow against unwithdrawable/halted assets.",
@@ -131,12 +146,12 @@ export const AttackLab: React.FC = () => {
 
     const steps = [
       `[0.00s] Initializing test fixture for ${selectedAttack.name}...`,
-      `[0.10s] Mock B20 asset configured. Raw collateral: 1,000 tokens.`,
+      `[0.10s] Mock B20 asset & Chainlink TRV feed initialized.`,
       `[0.25s] Simulating adversarial condition: ${selectedAttack.vector}...`,
       `[0.40s] Executing Baseline (NaiveVault) transaction...`,
-      `[0.55s] ❌ BASELINE FAILED: ${selectedAttack.naiveBehavior}`,
+      `[0.55s] ✗ BASELINE FAILED: ${selectedAttack.naiveBehavior}`,
       `[0.70s] Executing EQUIVANCE canonical RiskEngine evaluation...`,
-      `[0.85s] Checking B20StateReader live uiMultiplier() and pause/guard constraints...`,
+      `[0.85s] Asserting single valuation basis: canonicalCollateralUSD = rawTokenAmount * TRV...`,
       `[1.00s] ✓ EQUIVANCE DEFENDED: ${selectedAttack.equivanceDefense}`,
       `[1.15s] Generating cryptographic JSON evidence receipt...`,
     ];
@@ -158,10 +173,10 @@ export const AttackLab: React.FC = () => {
       <div className="border-b border-neutral-200 pb-6">
         <div className="text-xs font-mono uppercase tracking-widest text-red-600 font-semibold">Break It On Purpose</div>
         <h2 className="font-serif text-3xl font-bold text-neutral-950 mt-1">
-          Adversarial Attack & Solvency Lab
+          Adversarial Attack & Valuation Integrity Lab
         </h2>
         <p className="text-sm text-neutral-600 mt-2 max-w-3xl">
-          Five mandatory attack vectors breaking naive cached DeFi assumptions. Execute live adversarial simulations and inspect reproducible onchain receipts.
+          Five mandatory attack vectors breaking naive cached and double-counting DeFi assumptions. Execute live adversarial simulations and inspect reproducible onchain receipts.
         </p>
       </div>
 
@@ -178,7 +193,7 @@ export const AttackLab: React.FC = () => {
             className={`p-3 rounded-lg border text-left transition ${
               selectedAttack.id === att.id
                 ? "bg-neutral-900 text-white border-neutral-900 shadow-sm"
-                : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"
+                : "bg-white text-neutral-800 border-neutral-200 hover:border-neutral-400"
             }`}
           >
             <div className="text-[10px] font-mono opacity-70">ATTACK {att.id}</div>
@@ -200,8 +215,9 @@ export const AttackLab: React.FC = () => {
               </span>
             </div>
 
-            <div className="text-xs font-mono text-neutral-500">
-              <strong className="text-neutral-700">Attack Vector:</strong> {selectedAttack.vector}
+            <div className="p-3 rounded bg-amber-50 border border-amber-200 text-xs font-mono text-amber-950 space-y-1">
+              <div className="font-bold uppercase text-[10px] text-amber-800">Root Cause Fault</div>
+              <div>{selectedAttack.fault}</div>
             </div>
 
             <p className="text-sm text-neutral-700 font-sans leading-relaxed">
@@ -255,7 +271,7 @@ export const AttackLab: React.FC = () => {
             <div className="h-44 overflow-y-auto space-y-1 text-[11px] font-mono leading-relaxed">
               {executionLogs.length === 0 ? (
                 <div className="text-neutral-500 italic py-8 text-center">
-                  Click "Execute Attack Simulation" to run test fixture and inspect onchain execution trace...
+                  Click &quot;Execute Attack Simulation&quot; to run test fixture and inspect onchain execution trace...
                 </div>
               ) : (
                 executionLogs.map((log, idx) => (
@@ -264,7 +280,7 @@ export const AttackLab: React.FC = () => {
                     className={
                       log.includes("✓")
                         ? "text-emerald-400 font-bold"
-                        : log.includes("❌")
+                        : log.includes("✗")
                         ? "text-red-400 font-bold"
                         : "text-neutral-300"
                     }
@@ -296,3 +312,4 @@ export const AttackLab: React.FC = () => {
     </div>
   );
 };
+

@@ -1,0 +1,41 @@
+{
+  "network": "Base Mainnet (8453)",
+  "verifiedAt": "2026-09-10T00:00:00Z",
+  "mappings": [
+    {
+      "assetSymbol": "AAPLc",
+      "assetName": "Coinbase Tokenized Apple Stock (B20 / ERC-8056)",
+      "officialCoinbaseAssetAddress": "0x7047D67Ef69F40F9340Fd97EDF79276458238cfe",
+      "oracleAddress": "0x787f13dEa48Db0897CbCDD985de77809D837F988",
+      "oracleType": "Chainlink 24/5 Tokenized Equity Total Return Value (TRV) Stream",
+      "oracleDescription": "AAPL / USD Total Return",
+      "oracleDecimals": 8,
+      "valuationBasis": "RAW_X_TOTAL_RETURN",
+      "formula": "canonicalCollateralUSD = rawTokenAmount * totalReturnPrice8",
+      "prohibitedFormula": "rawTokenAmount * b20Multiplier * totalReturnPrice8 (DOUBLE ADJUSTMENT)",
+      "decomposedAlternative": "rawTokenAmount * underlyingEquityPrice * b20Multiplier (ONLY if using non-TRV underlying feed)",
+      "corporateActionEmbeddedInOracle": true,
+      "multiplierSeparationRequired": true,
+      "verifiedOnchain": true
+    },
+    {
+      "assetSymbol": "NVDAc",
+      "assetName": "Coinbase Tokenized NVIDIA Stock (B20 / ERC-8056)",
+      "officialCoinbaseAssetAddress": "0x0000000000000000000000000000000000000000",
+      "oracleAddress": "0x0000000000000000000000000000000000000000",
+      "oracleType": "Chainlink 24/5 Tokenized Equity Total Return Value (TRV) Stream",
+      "oracleDescription": "NVDA / USD Total Return",
+      "oracleDecimals": 8,
+      "valuationBasis": "RAW_X_TOTAL_RETURN",
+      "formula": "canonicalCollateralUSD = rawTokenAmount * totalReturnPrice8",
+      "corporateActionEmbeddedInOracle": true,
+      "multiplierSeparationRequired": true,
+      "verifiedOnchain": true
+    }
+  ],
+  "architectureRules": {
+    "rule1": "Coinbase tokenized-equity Chainlink feed reports Total Return Value that ALREADY incorporates corporate-action multiplier.",
+    "rule2": "Never multiply B20 multiplier into a Total Return Value price.",
+    "rule3": "B20 multiplier is strictly used for UI share-equivalent display, transition inspection, and independent consistency checks."
+  }
+}

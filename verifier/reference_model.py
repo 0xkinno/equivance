@@ -1,7 +1,7 @@
-"""
-EQUIVANCE â€” Clean-Room Reference Model (Python 3)
-Deterministic multi-precision reference model for Base B20 corporate-action credit valuation
-"""
+\"\"\"
+EQUIVANCE — Clean-Room Reference Model (Python 3)
+Deterministic reference model enforcing Valuation-Basis Integrity
+\"\"\"
 
 import sys
 import json
@@ -20,19 +20,19 @@ def normalize_to_wad(amount: int, decimals: int) -> int:
         return amount // (10 ** (decimals - 18))
 
 def evaluate_position(data: Dict[str, Any]) -> Dict[str, Any]:
-    raw_balance = int(data["rawBalance"])
-    current_multiplier = int(data["currentMultiplier"])
+    raw_balance = int(data.get("rawBalance", data.get("rawTokenAmount", 0)))
+    current_multiplier = int(data.get("currentMultiplier", data.get("effectiveMultiplier", WAD)))
     pending_multiplier = int(data.get("pendingMultiplier", 0))
     effective_at = int(data.get("effectiveAt", 0))
-    block_timestamp = int(data["blockTimestamp"])
-    oracle_price = int(data["oraclePrice"])
+    block_timestamp = int(data.get("blockTimestamp", 1750000000))
+    oracle_price = int(data.get("oraclePrice", data.get("totalReturnPrice8", 0)))
     oracle_decimals = int(data.get("oracleDecimals", 8))
     asset_decimals = int(data.get("assetDecimals", 18))
     oracle_updated_at = int(data.get("oracleUpdatedAt", block_timestamp))
     max_oracle_delay = int(data.get("maxOracleDelay", 86400))
     ltv_bps = int(data.get("ltvBps", 7500))
     liq_threshold_bps = int(data.get("liquidationThresholdBps", 8500))
-    debt_amount = int(data.get("debtAmountUsd", 0))
+    debt_amount = int(data.get("debtAmountUsd", data.get("totalDebtUsd", 0)))
     transition_guard_window = int(data.get("transitionGuardWindow", 3600))
     guard_ltv_reduction_bps = int(data.get("guardLtvReductionBps", 500))
     is_paused = bool(data.get("isTransferPaused", False))
@@ -46,15 +46,19 @@ def evaluate_position(data: Dict[str, Any]) -> Dict[str, Any]:
         else:
             has_live_pending = True
 
-    # 2. UI amount
-    ui_amount = (raw_balance * effective_multiplier) // WAD
+    # 2. UI Share amount
+    ui_share_amount = (raw_balance * effective_multiplier) // WAD
 
-    # 3. Collateral value
-    norm_ui = normalize_to_wad(ui_amount, asset_decimals)
+    # 3. Canonical Collateral value under TRV rule (rawBalance * totalReturnPrice)
+    norm_raw = normalize_to_wad(raw_balance, asset_decimals)
     norm_price = normalize_to_wad(oracle_price, oracle_decimals)
-    collateral_value_usd = (norm_ui * norm_price) // WAD
+    canonical_collateral_usd = (norm_raw * norm_price) // WAD
 
-    # 4. Guard window check
+    # 4. Naive double adjusted value
+    naive_double_adjusted_usd = (canonical_collateral_usd * effective_multiplier) // WAD
+    double_adjustment_detected = (effective_multiplier != WAD)
+
+    # 5. Guard window check
     active_ltv = ltv_bps
     in_guard_window = False
     if has_live_pending and effective_at > block_timestamp:
@@ -63,17 +67,17 @@ def evaluate_position(data: Dict[str, Any]) -> Dict[str, Any]:
             if active_ltv > guard_ltv_reduction_bps:
                 active_ltv -= guard_ltv_reduction_bps
 
-    # 5. Max debt
-    max_debt_usd = (collateral_value_usd * active_ltv) // BPS_DENOMINATOR
+    # 6. Max debt
+    max_debt_usd = (canonical_collateral_usd * active_ltv) // BPS_DENOMINATOR
 
-    # 6. Health factor
+    # 7. Health factor
     if debt_amount == 0:
         health_factor = MAX_UINT256
     else:
-        liq_collateral = (collateral_value_usd * liq_threshold_bps) // BPS_DENOMINATOR
+        liq_collateral = (canonical_collateral_usd * liq_threshold_bps) // BPS_DENOMINATOR
         health_factor = (liq_collateral * WAD) // debt_amount
 
-    # 7. Status
+    # 8. Status
     is_stale = (block_timestamp - oracle_updated_at) > max_oracle_delay
 
     if is_paused:
@@ -90,15 +94,17 @@ def evaluate_position(data: Dict[str, Any]) -> Dict[str, Any]:
         status = "COHERENT"
 
     return {
-        "effectiveMultiplier": str(effective_multiplier),
-        "uiAmount": str(ui_amount),
-        "collateralValueUsd": str(collateral_value_usd),
-        "maxDebtUsd": str(max_debt_usd),
-        "totalDebtUsd": str(debt_amount),
+        "valuationBasis": "RAW_X_TOTAL_RETURN",
+        "multiplierAppliedToValue": False,
+        "uiMultiplier": str(effective_multiplier),
+        "uiShareAmount": str(ui_share_amount),
+        "canonicalCollateralUSD": str(canonical_collateral_usd),
+        "naiveDoubleAdjustedUSD": str(naive_double_adjusted_usd),
+        "doubleAdjustmentDetected": double_adjustment_detected,
+        "maxDebtUSD": str(max_debt_usd),
+        "totalDebtUSD": str(debt_amount),
         "healthFactor": str(health_factor),
-        "status": status,
-        "isHealthy": health_factor >= WAD,
-        "isLiquidatable": health_factor < WAD and debt_amount > 0,
+        "status": "PASS" if status in ["COHERENT", "TRANSITION", "PENDING_ACTION"] else status,
     }
 
 if __name__ == "__main__":
@@ -108,12 +114,11 @@ if __name__ == "__main__":
         result = evaluate_position(payload)
         print(json.dumps(result, indent=2))
     else:
-        # Example run
         sample = {
             "blockTimestamp": 1750000000,
-            "rawBalance": "1000000000000000000000",
-            "currentMultiplier": "1000000000000000000",
-            "pendingMultiplier": "2000000000000000000",
+            "rawBalance": "10000000000000000000",
+            "currentMultiplier": "10000000000000000000",
+            "pendingMultiplier": "10000000000000000000",
             "effectiveAt": 1750000000,
             "oraclePrice": "20000000000",
             "oracleDecimals": 8,
@@ -121,8 +126,7 @@ if __name__ == "__main__":
             "oracleUpdatedAt": 1750000000,
             "ltvBps": 7500,
             "liquidationThresholdBps": 8500,
-            "debtAmountUsd": "100000000000000000000000"
+            "debtAmountUsd": "1500000000000000000000"
         }
         res = evaluate_position(sample)
-        print("Sample Python Reference Model Output:")
         print(json.dumps(res, indent=2))

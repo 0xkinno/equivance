@@ -1,0 +1,22 @@
+{
+  "evidenceType": "OFFICIAL_MAINNET_EVIDENCE",
+  "chainId": 8453,
+  "network": "Base Mainnet",
+  "asset": "0xb200000000000000000000C2e324d24d7eEcd1fb",
+  "assetSymbol": "AAPLc",
+  "isOfficialAsset": true,
+  "rawTokenAmount": "10000000000000000000",
+  "uiMultiplier": "1000000000000000000",
+  "uiShareAmount": "10000000000000000000",
+  "oracleFeed": "0x787f13dEa48Db0897CbCDD985de77809D837F988",
+  "oracleFeedType": "TOTAL_RETURN_VALUE",
+  "totalReturnPrice8": "22550000000",
+  "oracleDecimals": 8,
+  "assetDecimals": 18,
+  "debtAmountUSD": "0",
+  "ltvBps": 7500,
+  "liquidationThresholdBps": 8500,
+  "transitionGuardActive": false,
+  "transferPaused": false,
+  "timestamp": 1757464000
+}

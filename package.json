@@ -9,13 +9,13 @@
     "start": "next start",
     "lint": "next lint",
     "compile": "hardhat compile",
-    "test": "hardhat test",
-    "test:unit": "hardhat test test/unit/*.test.ts",
-    "test:integration": "hardhat test test/integration/*.test.ts",
-    "test:adversarial": "hardhat test test/adversarial/*.test.ts",
-    "fuzz": "ts-node proof/differential_fuzz.ts",
-    "verify-position": "ts-node verifier/verify-position.ts",
-    "probe:base": "ts-node script/probe_base_stocks.ts"
+    "test": "node test/run_tests.cjs",
+    "test:unit": "hardhat test test/unit/PositionMath.test.ts test/unit/RiskEngine.test.ts test/unit/B20StateReader.test.ts",
+    "test:integration": "hardhat test test/integration/CorporateActionConservation.test.ts test/integration/B20MultiplierTransition.test.ts test/integration/VaultLifecycle.test.ts test/integration/OracleFreshness.test.ts",
+    "test:adversarial": "hardhat test test/adversarial/EventCacheStale.test.ts test/adversarial/RawVsUIUnitMismatch.test.ts test/adversarial/PendingMultiplierWindow.test.ts test/adversarial/PolicyApprovalDoesNotImplyTransfer.test.ts test/adversarial/PauseBoundary.test.ts",
+    "fuzz": "node proof/differential_fuzz.js",
+    "verify-position": "node verifier/verify-position.js",
+    "probe:base": "node script/probe_base_stocks.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",

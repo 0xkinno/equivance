@@ -27,10 +27,10 @@ describe("Adversarial Attack C: Pending Multiplier Transition Boundary & Leverag
     mockDebtToken = await MockDebtToken.deploy("USD Coin", "USDC", 6);
 
     const MockB20 = await ethers.getContractFactory("MockB20Asset");
-    mockAsset = await MockB20.deploy("Apple Tokenized Stock", "AAPLc", 18);
+    mockAsset = await MockB20.deploy("Apple Tokenized Stock (B20)", "AAPLc", 18);
 
     const MockAggregator = await ethers.getContractFactory("MockAggregatorV3");
-    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD", 20000000000); // $200.00 (8 dec)
+    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD Total Return", 20000000000); // .00 (8 dec)
 
     await riskEngine.setAssetConfig(
       await mockAsset.getAddress(),
@@ -63,25 +63,26 @@ describe("Adversarial Attack C: Pending Multiplier Transition Boundary & Leverag
     await vault.connect(user).deposit(await mockAsset.getAddress(), 100n * WAD);
     await mockAsset.updateUIMultiplier(2n * WAD, effectiveAt);
 
-    // 1. Immediately before effectiveAt (T - 1)
+    // 1. Immediately before effectiveAt (T - 1) - Guard Window Active
     await ethers.provider.send("evm_setNextBlockTimestamp", [effectiveAt - 1]);
     await ethers.provider.send("evm_mine", []);
 
     const evalBefore = await riskEngine.evaluatePosition(await mockAsset.getAddress(), 100n * WAD, 0n);
     expect(evalBefore.effectiveMultiplier).to.equal(1n * WAD);
-    expect(evalBefore.uiCollateral).to.equal(100n * WAD);
-    expect(evalBefore.maxDebtUsd).to.equal(14000n * WAD);
+    expect(evalBefore.uiShareAmount).to.equal(100n * WAD);
+    // 70% LTV applied during guard window (,000 max debt)
+    expect(evalBefore.maxDebtUsdWad).to.equal(14000n * WAD);
 
-    // 2. Exactly at effectiveAt (T)
+    // 2. Exactly at effectiveAt (T) - Multiplier matured lazily
     await ethers.provider.send("evm_setNextBlockTimestamp", [effectiveAt]);
     await ethers.provider.send("evm_mine", []);
 
     const evalAfter = await riskEngine.evaluatePosition(await mockAsset.getAddress(), 100n * WAD, 0n);
     expect(evalAfter.effectiveMultiplier).to.equal(2n * WAD);
-    expect(evalAfter.uiCollateral).to.equal(200n * WAD);
-    // 200 shares * $200 = $40,000 collateral value -> Max debt @ 75% = $30,000
-    expect(evalAfter.collateralValueUsd).to.equal(40000n * WAD);
-    expect(evalAfter.maxDebtUsd).to.equal(30000n * WAD);
+    expect(evalAfter.uiShareAmount).to.equal(200n * WAD);
+    // Collateral value strictly conserved under TRV: 100 raw *  = ,000
+    expect(evalAfter.collateralUsdWad).to.equal(20000n * WAD);
+    expect(evalAfter.maxDebtUsdWad).to.equal(15000n * WAD); // 75% normal LTV restored
 
     const attackReceipt = {
       attackId: "ATTACK-C-EFFECTIVEAT-BOUNDARY",
@@ -91,14 +92,14 @@ describe("Adversarial Attack C: Pending Multiplier Transition Boundary & Leverag
       beforeTransition: {
         timestamp: effectiveAt - 1,
         effectiveMultiplier: (1n * WAD).toString(),
-        uiCollateral: (100n * WAD).toString(),
+        uiShareAmount: (100n * WAD).toString(),
         maxDebtUsd: (14000n * WAD).toString(),
       },
       atTransition: {
         timestamp: effectiveAt,
         effectiveMultiplier: (2n * WAD).toString(),
-        uiCollateral: (200n * WAD).toString(),
-        maxDebtUsd: (30000n * WAD).toString(),
+        uiShareAmount: (200n * WAD).toString(),
+        maxDebtUsd: (15000n * WAD).toString(),
       },
       transitionType: "EVENTLESS_LAZY_EVALUATION",
       verifierStatus: "PASS",

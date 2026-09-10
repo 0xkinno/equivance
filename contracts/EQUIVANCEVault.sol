@@ -11,7 +11,9 @@ import "./EQUIVANCEPosition.sol";
 /**
  * @title EQUIVANCEVault
  * @notice Corporate-Action-Coherent Credit Vault for Base B20 Tokenized Stocks
- * @dev Enforces the primary invariant: No risk-changing operation may execute against a cached multiplier.
+ * @dev Enforces Valuation-Basis Integrity:
+ *      canonicalCollateralUSD = rawTokenAmount * totalReturnPrice
+ *      NEVER compounds B20 multiplier into Total Return Value price.
  */
 contract EQUIVANCEVault is EQUIVANCEPosition {
     using PositionMath for uint256;
@@ -25,17 +27,16 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
 
     bool private _locked;
 
-    event Deposited(address indexed user, address indexed asset, uint256 rawAmount, uint256 effectiveMultiplier);
-    event Borrowed(address indexed user, address indexed asset, uint256 borrowAmountUsd, uint256 totalDebtUsd);
-    event Repaid(address indexed user, address indexed asset, uint256 repayAmountUsd, uint256 remainingDebtUsd);
-    event Withdrawn(address indexed user, address indexed asset, uint256 rawAmount, uint256 remainingRaw);
+    event Deposited(address indexed user, address indexed asset, uint256 rawTokenAmount, uint256 effectiveMultiplier);
+    event Borrowed(address indexed user, address indexed asset, uint256 borrowAmountUsdWad, uint256 totalDebtUsdWad);
+    event Repaid(address indexed user, address indexed asset, uint256 repayAmountUsdWad, uint256 remainingDebtUsdWad);
+    event Withdrawn(address indexed user, address indexed asset, uint256 rawTokenAmount, uint256 remainingRawTokenAmount);
     event Liquidated(
         address indexed liquidator,
         address indexed borrower,
         address indexed asset,
-        uint256 debtRepaidUsd,
-        uint256 rawCollateralSeized,
-        uint256 uiCollateralSeized
+        uint256 debtRepaidUsdWad,
+        uint256 rawCollateralSeized
     );
 
     error ReentrancyGuard();
@@ -71,43 +72,43 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
     /**
      * @notice Deposit raw B20 tokenized stock collateral
      * @param asset Address of the B20 asset
-     * @param rawAmount Unscaled token units to deposit
+     * @param rawTokenAmount Unscaled token units to deposit
      */
-    function deposit(address asset, uint256 rawAmount) public nonReentrant {
-        if (rawAmount == 0) revert ZeroAmount();
+    function deposit(address asset, uint256 rawTokenAmount) public nonReentrant {
+        if (rawTokenAmount == 0) revert ZeroAmount();
 
         Position memory pos = _positions[msg.sender][asset];
-        uint256 newRawCollateral = pos.rawCollateral + rawAmount;
+        uint256 newRawCollateral = pos.rawCollateral + rawTokenAmount;
 
         // Perform safe transfer from user to vault
-        _safeTransferFrom(asset, msg.sender, address(this), rawAmount);
+        _safeTransferFrom(asset, msg.sender, address(this), rawTokenAmount);
 
         // Update internal accounting
         _updatePosition(msg.sender, asset, newRawCollateral, pos.debtAmountUsd);
 
         // Inspect live state for event logging
         B20StateReader.B20State memory b20State = stateReader.getB20State(asset, address(this));
-        emit Deposited(msg.sender, asset, rawAmount, b20State.effectiveMultiplier);
+        emit Deposited(msg.sender, asset, rawTokenAmount, b20State.effectiveMultiplier);
     }
 
     /**
      * @notice Add collateral (alias for deposit)
      */
-    function addCollateral(address asset, uint256 rawAmount) external {
-        deposit(asset, rawAmount);
+    function addCollateral(address asset, uint256 rawTokenAmount) external {
+        deposit(asset, rawTokenAmount);
     }
 
     /**
      * @notice Borrow stablecoin against deposited B20 collateral
      * @dev Re-derives collateral valuation dynamically from current block timestamp
      * @param asset Collateral asset backing the borrow
-     * @param borrowAmountUsd Desired debt amount in 18-decimal USD WAD
+     * @param borrowAmountUsdWad Desired debt amount in 18-decimal USD WAD
      */
-    function borrow(address asset, uint256 borrowAmountUsd) external nonReentrant {
-        if (borrowAmountUsd == 0) revert ZeroAmount();
+    function borrow(address asset, uint256 borrowAmountUsdWad) external nonReentrant {
+        if (borrowAmountUsdWad == 0) revert ZeroAmount();
 
         Position memory pos = _positions[msg.sender][asset];
-        uint256 newDebt = pos.debtAmountUsd + borrowAmountUsd;
+        uint256 newDebt = pos.debtAmountUsd + borrowAmountUsdWad;
 
         // Canonical live risk evaluation at CURRENT block timestamp
         RiskEngine.EvaluationResult memory eval = riskEngine.evaluatePosition(
@@ -118,7 +119,7 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
 
         if (eval.status == RiskEngine.PositionStatus.BLOCKED) revert AssetBlocked();
         if (eval.status == RiskEngine.PositionStatus.STALE_ORACLE) revert OracleStale();
-        if (newDebt > eval.maxDebtUsd) revert InsufficientCollateral(newDebt, eval.maxDebtUsd);
+        if (newDebt > eval.maxDebtUsdWad) revert InsufficientCollateral(newDebt, eval.maxDebtUsdWad);
         if (!eval.isHealthy) revert UnhealthyPositionAfterAction(eval.healthFactor);
 
         // Update state
@@ -126,51 +127,51 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
 
         // Transfer debt token (denormalized if token has non-18 decimals)
         uint8 debtDecimals = debtToken.decimals();
-        uint256 transferAmount = PositionMath.denormalizeFromWad(borrowAmountUsd, debtDecimals);
+        uint256 transferAmount = PositionMath.denormalizeFromWad(borrowAmountUsdWad, debtDecimals);
         _safeTransfer(address(debtToken), msg.sender, transferAmount);
 
-        emit Borrowed(msg.sender, asset, borrowAmountUsd, newDebt);
+        emit Borrowed(msg.sender, asset, borrowAmountUsdWad, newDebt);
     }
 
     /**
      * @notice Repay outstanding debt
      * @param asset Collateral asset backing the debt
-     * @param repayAmountUsd Debt amount to repay in 18-decimal USD WAD
+     * @param repayAmountUsdWad Debt amount to repay in 18-decimal USD WAD
      */
-    function repay(address asset, uint256 repayAmountUsd) external nonReentrant {
-        if (repayAmountUsd == 0) revert ZeroAmount();
+    function repay(address asset, uint256 repayAmountUsdWad) external nonReentrant {
+        if (repayAmountUsdWad == 0) revert ZeroAmount();
 
         Position memory pos = _positions[msg.sender][asset];
-        if (repayAmountUsd > pos.debtAmountUsd) {
-            repayAmountUsd = pos.debtAmountUsd;
+        if (repayAmountUsdWad > pos.debtAmountUsd) {
+            repayAmountUsdWad = pos.debtAmountUsd;
         }
 
-        uint256 remainingDebt = pos.debtAmountUsd - repayAmountUsd;
+        uint256 remainingDebt = pos.debtAmountUsd - repayAmountUsdWad;
 
         // Transfer debt token from user to vault
         uint8 debtDecimals = debtToken.decimals();
-        uint256 transferAmount = PositionMath.denormalizeFromWad(repayAmountUsd, debtDecimals);
+        uint256 transferAmount = PositionMath.denormalizeFromWad(repayAmountUsdWad, debtDecimals);
         _safeTransferFrom(address(debtToken), msg.sender, address(this), transferAmount);
 
         // Update state
         _updatePosition(msg.sender, asset, pos.rawCollateral, remainingDebt);
 
-        emit Repaid(msg.sender, asset, repayAmountUsd, remainingDebt);
+        emit Repaid(msg.sender, asset, repayAmountUsdWad, remainingDebt);
     }
 
     /**
      * @notice Withdraw raw B20 token collateral
      * @dev Re-evaluates remaining position to guarantee health factor >= 1.0e18
      * @param asset Collateral asset to withdraw
-     * @param rawAmount Unscaled token units to withdraw
+     * @param rawTokenAmount Unscaled token units to withdraw
      */
-    function withdraw(address asset, uint256 rawAmount) external nonReentrant {
-        if (rawAmount == 0) revert ZeroAmount();
+    function withdraw(address asset, uint256 rawTokenAmount) external nonReentrant {
+        if (rawTokenAmount == 0) revert ZeroAmount();
 
         Position memory pos = _positions[msg.sender][asset];
-        require(rawAmount <= pos.rawCollateral, "Exceeds deposited balance");
+        require(rawTokenAmount <= pos.rawCollateral, "Exceeds deposited balance");
 
-        uint256 remainingRaw = pos.rawCollateral - rawAmount;
+        uint256 remainingRaw = pos.rawCollateral - rawTokenAmount;
 
         // If user has outstanding debt, verify solvency with reduced collateral
         if (pos.debtAmountUsd > 0) {
@@ -189,24 +190,23 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
         _updatePosition(msg.sender, asset, remainingRaw, pos.debtAmountUsd);
 
         // Transfer raw tokens back to user
-        _safeTransfer(asset, msg.sender, rawAmount);
+        _safeTransfer(asset, msg.sender, rawTokenAmount);
 
-        emit Withdrawn(msg.sender, asset, rawAmount, remainingRaw);
+        emit Withdrawn(msg.sender, asset, rawTokenAmount, remainingRaw);
     }
 
     /**
      * @notice Liquidate an under-collateralized position
-     * @dev Re-derives live multiplier and valuation before allowing liquidation
      * @param borrower Target borrower address
      * @param asset Collateral asset backing the position
-     * @param debtToRepayUsd Amount of debt to liquidate in USD WAD
+     * @param debtToRepayUsdWad Amount of debt to liquidate in USD WAD
      */
     function liquidate(
         address borrower,
         address asset,
-        uint256 debtToRepayUsd
+        uint256 debtToRepayUsdWad
     ) external nonReentrant {
-        if (debtToRepayUsd == 0) revert ZeroAmount();
+        if (debtToRepayUsdWad == 0) revert ZeroAmount();
 
         Position memory pos = _positions[borrower][asset];
         if (pos.debtAmountUsd == 0) revert PositionHealthy();
@@ -221,8 +221,8 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
         if (!eval.isLiquidatable) revert PositionHealthy();
 
         // Cap repayment to total debt
-        if (debtToRepayUsd > pos.debtAmountUsd) {
-            debtToRepayUsd = pos.debtAmountUsd;
+        if (debtToRepayUsdWad > pos.debtAmountUsd) {
+            debtToRepayUsdWad = pos.debtAmountUsd;
         }
 
         (
@@ -235,14 +235,13 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
             ,
         ) = riskEngine.assetConfigs(asset);
 
-        // 2. Calculate collateral to seize
-        (uint256 rawCollateralToSeize, uint256 uiCollateralSeized) = PositionMath.calculateLiquidationCollateral(
-            debtToRepayUsd,
-            eval.oraclePrice,
+        // 2. Calculate collateral to seize (raw units under TRV pricing)
+        uint256 rawCollateralToSeize = PositionMath.calculateLiquidationCollateral(
+            debtToRepayUsdWad,
+            eval.totalReturnPrice8,
             eval.oracleDecimals,
             eval.assetDecimals,
-            liquidationPenaltyBps,
-            eval.effectiveMultiplier
+            liquidationPenaltyBps
         );
 
         // Cap seized collateral to available balance
@@ -252,12 +251,12 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
 
         // 3. Collect debt repayment from liquidator
         uint8 debtDecimals = debtToken.decimals();
-        uint256 transferAmount = PositionMath.denormalizeFromWad(debtToRepayUsd, debtDecimals);
+        uint256 transferAmount = PositionMath.denormalizeFromWad(debtToRepayUsdWad, debtDecimals);
         _safeTransferFrom(address(debtToken), msg.sender, address(this), transferAmount);
 
         // 4. Update borrower position
         uint256 remainingRaw = pos.rawCollateral - rawCollateralToSeize;
-        uint256 remainingDebt = pos.debtAmountUsd - debtToRepayUsd;
+        uint256 remainingDebt = pos.debtAmountUsd - debtToRepayUsdWad;
         _updatePosition(borrower, asset, remainingRaw, remainingDebt);
 
         // 5. Transfer seized raw tokens to liquidator
@@ -267,9 +266,8 @@ contract EQUIVANCEVault is EQUIVANCEPosition {
             msg.sender,
             borrower,
             asset,
-            debtToRepayUsd,
-            rawCollateralToSeize,
-            uiCollateralSeized
+            debtToRepayUsdWad,
+            rawCollateralToSeize
         );
     }
 

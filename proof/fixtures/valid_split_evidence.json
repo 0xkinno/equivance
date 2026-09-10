@@ -2,10 +2,10 @@
   "chainId": 8453,
   "blockNumber": 22450100,
   "blockTimestamp": 1750000000,
-  "asset": "0x4B384A96BEaB552F2f6385d532881267D5a7e6b0",
-  "rawBalance": "1000000000000000000000",
+  "asset": "0x7047D67Ef69F40F9340Fd97EDF79276458238cfe",
+  "rawBalance": "10000000000000000000",
   "currentMultiplier": "1000000000000000000",
-  "pendingMultiplier": "2000000000000000000",
+  "pendingMultiplier": "10000000000000000000",
   "effectiveAt": 1750000000,
   "oraclePrice": "20000000000",
   "oracleDecimals": 8,
@@ -13,13 +13,10 @@
   "oracleUpdatedAt": 1750000000,
   "ltvBps": 7500,
   "liquidationThresholdBps": 8500,
-  "debtAmountUsd": "150000000000000000000000",
+  "debtAmountUsd": "1000000000000000000000",
   "expectedState": {
-    "effectiveMultiplier": "2000000000000000000",
-    "uiAmount": "2000000000000000000000",
-    "collateralValueUsd": "400000000000000000000000",
-    "maxDebtUsd": "300000000000000000000000",
-    "healthFactor": "2266666666666666666",
+    "effectiveMultiplier": "10000000000000000000",
+    "canonicalCollateralUSD": "2000000000000000000000",
     "status": "COHERENT"
   }
 }

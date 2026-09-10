@@ -1,0 +1,47 @@
+{
+  "network": "Base Mainnet",
+  "chainId": 8453,
+  "timestamp": "2026-09-10T00:33:00Z",
+  "officialAsset": {
+    "symbol": "AAPLc",
+    "name": "Apple Inc. (Coinbase Tokenized Stock)",
+    "officialContractAddress": "0xb200000000000000000000C2e324d24d7eEcd1fb",
+    "standard": "B20 (Base Native Asset)",
+    "decimals": 18,
+    "currentMultiplierWad": "1000000000000000000",
+    "custodian": "Alpaca / ADGM Regulated Custody",
+    "isControlledTestProxy": false
+  },
+  "officialOracle": {
+    "feedAddress": "0x787f13dEa48Db0897CbCDD985de77809D837F988",
+    "pair": "AAPL / USD",
+    "feedType": "Coinbase Tokenized Equity Total Return Value (TRV)",
+    "decimals": 8,
+    "incorporatesMultiplier": true,
+    "marketHours": "24/5 Equity Stream",
+    "sampleRoundData": {
+      "roundId": "18446744073709553748",
+      "answer": "22550000000",
+      "formattedUSD": "225.50",
+      "updatedAt": 1757464000
+    }
+  },
+  "controlledTestProxy": {
+    "contractAddress": "0x7047D67Ef69F40F9340Fd97EDF79276458238cfe",
+    "label": "CONTROLLED TEST ASSET",
+    "purpose": "Deterministic fault injection & adversarial split simulation only"
+  },
+  "canonicalValuationProof": {
+    "formula": "canonicalCollateralUSD = rawTokenAmount * chainlinkTotalReturnValue",
+    "multiplierAppliedToValuation": false,
+    "sampleRawTokenAmount": "10000000000000000000",
+    "sampleTRVPrice8": "22550000000",
+    "computedCanonicalUSDWad": "2255000000000000000000",
+    "computedCanonicalUSDFormatted": ",255.00",
+    "uiShareAmountWad": "10000000000000000000",
+    "maxDebtAllowedUSDWad": "1691250000000000000000",
+    "maxDebtAllowedFormatted": ",691.25 (75% LTV)",
+    "valuationBasis": "RAW_X_TOTAL_RETURN",
+    "status": "ATTESTED_AND_VERIFIED"
+  }
+}

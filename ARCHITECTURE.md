@@ -39,12 +39,13 @@ graph TD
 
 ### 2.1 `PositionMath.sol`
 A stateless, pure mathematical library providing deterministic 18-decimal fixed-point (WAD) arithmetic:
-- `toUIAmount(rawAmount, multiplier)`: Computes $\text{rawAmount} \times \text{multiplier} / 10^{18}$.
-- `toRawAmount(uiAmount, multiplier)`: Computes $\text{uiAmount} \times 10^{18} / \text{multiplier}$.
-- `calculateCollateralValue(uiAmount, price, oracleDecimals, assetDecimals)`: Normalizes mixed decimal places into standard 18-decimal USD value.
-- `calculateMaxDebt(collateralValue, ltvBps)`: Calculates safe borrowing capacity given LTV basis points.
-- `calculateHealthFactor(collateralValue, debtValue)`: Returns position health in WAD format ($1.0 \times 10^{18} = 100\%$ collateralization threshold).
-- `calculateLiquidationValue(debtToRepay, liquidationThresholdBps, liquidationBonusBps)`: Determines collateral seized during liquidation.
+- `valueCollateral(rawTokenAmount, totalReturnPrice8, assetDecimals, oracleDecimals)`: Canonical valuation multiplying raw token units by the Chainlink Total Return Price feed without multiplier compounding.
+- `toUIShareAmount(rawTokenAmount, uiMultiplier)`: Computes UI share-equivalent display units ($\text{rawTokenAmount} \times \text{multiplier} / 10^{18}$).
+- `toRawTokenAmount(uiShareAmount, uiMultiplier)`: Inverts UI shares to raw token balance.
+- `calculateNaiveDoubleAdjustedUSD(rawTokenAmount, uiMultiplier, totalReturnPrice8, ...)`: Computes the flawed double-compounded baseline valuation for adversarial benchmarking.
+- `calculateMaxDebt(collateralUsdWad, ltvBps)`: Calculates safe borrowing capacity given LTV basis points.
+- `calculateHealthFactor(liquidationCollateralUsdWad, totalDebtUsdWad)`: Returns position health in WAD format ($1.0 \times 10^{18} = 100\%$ collateralization threshold).
+- `calculateLiquidationValue(...)`: Determines exact collateral units seized during liquidation under TRV basis.
 
 ### 2.2 `B20StateReader.sol`
 A unified adapter that queries the underlying B20 token contract and constructs the canonical `B20State` struct:

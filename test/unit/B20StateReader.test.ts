@@ -23,8 +23,9 @@ describe("Unit: B20StateReader", function () {
 
   it("should extract correct initial state from B20 asset", async function () {
     const state = await stateReader.getB20State(await mockAsset.getAddress(), user.address);
-    expect(state.rawBalance).to.equal(500n * WAD);
+    expect(state.rawTokenAmount).to.equal(500n * WAD);
     expect(state.effectiveMultiplier).to.equal(1n * WAD);
+    expect(state.uiShareAmount).to.equal(500n * WAD);
     expect(state.pendingMultiplier).to.equal(0n);
     expect(state.hasLivePending).to.be.false;
     expect(state.transferPaused).to.be.false;

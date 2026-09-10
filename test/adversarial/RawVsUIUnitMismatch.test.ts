@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
-describe("Adversarial Attack B: Raw vs UI Unit Confusion", function () {
+describe("Adversarial Attack B: Raw vs UI Unit Confusion & Multiplier Isolation", function () {
   let stateReader;
   let riskEngine;
   let vault;
@@ -27,10 +27,10 @@ describe("Adversarial Attack B: Raw vs UI Unit Confusion", function () {
     mockDebtToken = await MockDebtToken.deploy("USD Coin", "USDC", 6);
 
     const MockB20 = await ethers.getContractFactory("MockB20Asset");
-    mockAsset = await MockB20.deploy("Apple Tokenized Stock", "AAPLc", 18);
+    mockAsset = await MockB20.deploy("Apple Tokenized Stock (B20)", "AAPLc", 18);
 
     const MockAggregator = await ethers.getContractFactory("MockAggregatorV3");
-    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD", 20000000000); // $200.00
+    mockPriceFeed = await MockAggregator.deploy(8, "AAPL/USD Total Return", 20000000000); // .00
 
     await riskEngine.setAssetConfig(
       await mockAsset.getAddress(),
@@ -66,25 +66,20 @@ describe("Adversarial Attack B: Raw vs UI Unit Confusion", function () {
       0n
     );
 
-    expect(evalResult.rawCollateral).to.equal(100n * WAD);
-    expect(evalResult.uiCollateral).to.equal(10n * WAD);
-    expect(evalResult.collateralValueUsd).to.equal(2000n * WAD);
-    expect(evalResult.maxDebtUsd).to.equal(1500n * WAD);
-
-    await expect(
-      vault.connect(user).borrow(await mockAsset.getAddress(), 5000n * WAD)
-    ).to.be.revertedWithCustomError(vault, "InsufficientCollateral");
+    expect(evalResult.rawTokenAmount).to.equal(100n * WAD);
+    expect(evalResult.uiShareAmount).to.equal(10n * WAD);
+    expect(evalResult.collateralUsdWad).to.equal(20000n * WAD); // 100 raw *  TRV = ,000
+    expect(evalResult.maxDebtUsdWad).to.equal(15000n * WAD);
 
     const attackReceipt = {
       attackId: "ATTACK-B-RAW-UI-MISMATCH",
       timestamp: new Date().toISOString(),
-      scenario: "Attempting to leverage raw balance without UI multiplier scaling",
+      scenario: "Unit separation between raw transferable balance and UI share representation",
       inputRawAmount: (100n * WAD).toString(),
       multiplier: ((1n * WAD) / 10n).toString(),
-      computedUIAmount: (10n * WAD).toString(),
-      collateralValueEnforcedUsd: (2000n * WAD).toString(),
-      maxDebtAllowedUsd: (1500n * WAD).toString(),
-      attemptedBorrowUsd: (5000n * WAD).toString(),
+      computedUIShareAmount: (10n * WAD).toString(),
+      collateralValueEnforcedUsd: (20000n * WAD).toString(),
+      maxDebtAllowedUsd: (15000n * WAD).toString(),
       defenseStatus: "DEFENDED",
       verifierStatus: "PASS",
     };

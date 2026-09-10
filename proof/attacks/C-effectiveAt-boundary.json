@@ -1,19 +1,19 @@
 {
   "attackId": "ATTACK-C-EFFECTIVEAT-BOUNDARY",
-  "timestamp": "2026-09-09T21:46:23.261Z",
+  "timestamp": "2026-09-09T23:22:30.676Z",
   "scenario": "Dynamic evaluation across exact timestamp T with zero keeper transaction",
-  "effectiveAt": 1789001292,
+  "effectiveAt": 1789003677,
   "beforeTransition": {
-    "timestamp": 1789001291,
+    "timestamp": 1789003676,
     "effectiveMultiplier": "1000000000000000000",
-    "uiCollateral": "100000000000000000000",
+    "uiShareAmount": "100000000000000000000",
     "maxDebtUsd": "14000000000000000000000"
   },
   "atTransition": {
-    "timestamp": 1789001292,
+    "timestamp": 1789003677,
     "effectiveMultiplier": "2000000000000000000",
-    "uiCollateral": "200000000000000000000",
-    "maxDebtUsd": "30000000000000000000000"
+    "uiShareAmount": "200000000000000000000",
+    "maxDebtUsd": "15000000000000000000000"
   },
   "transitionType": "EVENTLESS_LAZY_EVALUATION",
   "verifierStatus": "PASS"

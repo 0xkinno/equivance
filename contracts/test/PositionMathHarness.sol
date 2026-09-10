@@ -4,50 +4,58 @@ pragma solidity ^0.8.20;
 import "../PositionMath.sol";
 
 contract PositionMathHarness {
-    function toUIAmount(uint256 rawAmount, uint256 multiplier) external pure returns (uint256) {
-        return PositionMath.toUIAmount(rawAmount, multiplier);
+    function toUIShareAmount(uint256 rawTokenAmount, uint256 uiMultiplierWad) external pure returns (uint256) {
+        return PositionMath.toUIShareAmount(rawTokenAmount, uiMultiplierWad);
     }
 
-    function toRawAmount(uint256 uiAmount, uint256 multiplier) external pure returns (uint256) {
-        return PositionMath.toRawAmount(uiAmount, multiplier);
+    function toRawTokenAmount(uint256 uiShareAmount, uint256 uiMultiplierWad) external pure returns (uint256) {
+        return PositionMath.toRawTokenAmount(uiShareAmount, uiMultiplierWad);
     }
 
-    function calculateCollateralValue(
-        uint256 uiAmount,
-        uint256 price,
+    function valueCollateral(
+        uint256 rawTokenAmount,
+        uint256 totalReturnPrice8,
         uint8 oracleDecimals,
         uint8 assetDecimals
     ) external pure returns (uint256) {
-        return PositionMath.calculateCollateralValue(uiAmount, price, oracleDecimals, assetDecimals);
+        return PositionMath.valueCollateral(rawTokenAmount, totalReturnPrice8, oracleDecimals, assetDecimals);
     }
 
-    function calculateMaxDebt(uint256 collateralValueUsd, uint256 ltvBps) external pure returns (uint256) {
-        return PositionMath.calculateMaxDebt(collateralValueUsd, ltvBps);
+    function calculateNaiveDoubleAdjustedUSD(
+        uint256 rawTokenAmount,
+        uint256 totalReturnPrice8,
+        uint256 uiMultiplierWad,
+        uint8 oracleDecimals,
+        uint8 assetDecimals
+    ) external pure returns (uint256) {
+        return PositionMath.calculateNaiveDoubleAdjustedUSD(rawTokenAmount, totalReturnPrice8, uiMultiplierWad, oracleDecimals, assetDecimals);
+    }
+
+    function calculateMaxDebt(uint256 collateralUsdWad, uint256 ltvBps) external pure returns (uint256) {
+        return PositionMath.calculateMaxDebt(collateralUsdWad, ltvBps);
     }
 
     function calculateHealthFactor(
-        uint256 collateralValueUsd,
+        uint256 collateralUsdWad,
         uint256 liquidationThresholdBps,
-        uint256 totalDebtUsd
+        uint256 totalDebtUsdWad
     ) external pure returns (uint256) {
-        return PositionMath.calculateHealthFactor(collateralValueUsd, liquidationThresholdBps, totalDebtUsd);
+        return PositionMath.calculateHealthFactor(collateralUsdWad, liquidationThresholdBps, totalDebtUsdWad);
     }
 
     function calculateLiquidationCollateral(
-        uint256 debtToRepayUsd,
-        uint256 price,
+        uint256 debtToRepayUsdWad,
+        uint256 totalReturnPrice8,
         uint8 oracleDecimals,
         uint8 assetDecimals,
-        uint256 liquidationPenaltyBps,
-        uint256 multiplier
-    ) external pure returns (uint256, uint256) {
+        uint256 liquidationPenaltyBps
+    ) external pure returns (uint256) {
         return PositionMath.calculateLiquidationCollateral(
-            debtToRepayUsd,
-            price,
+            debtToRepayUsdWad,
+            totalReturnPrice8,
             oracleDecimals,
             assetDecimals,
-            liquidationPenaltyBps,
-            multiplier
+            liquidationPenaltyBps
         );
     }
 }

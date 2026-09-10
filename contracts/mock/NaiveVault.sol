@@ -7,8 +7,9 @@ import "../PositionMath.sol";
 
 /**
  * @title NaiveVault
- * @notice Deliberately flawed baseline vault implementation relying on cached event multiplier
- * @dev Used for benchmark comparison to demonstrate catastrophic bad debt / wrongful liquidation failure modes
+ * @notice Deliberately flawed baseline vault compounding B20 multiplier into Total Return Price
+ * @dev Valuation flaw: naiveCollateralUSD = rawTokenAmount * multiplier * totalReturnPrice
+ *      Demonstrates the exact value divergence and catastrophic over-borrowing caused by double-adjustment.
  */
 contract NaiveVault {
     using PositionMath for uint256;
@@ -26,12 +27,12 @@ contract NaiveVault {
     uint16 public ltvBps;
     uint16 public liquidationThresholdBps;
 
-    // The fatal flaw: cached multiplier set from historical event and never re-evaluated lazily
-    uint256 public cachedMultiplier;
+    // Multiplier applied by naive vault (either read from B20 or cached from events)
+    uint256 public activeMultiplier;
 
     mapping(address => mapping(address => NaivePosition)) public positions;
 
-    event CachedMultiplierUpdated(uint256 newCachedMultiplier);
+    event MultiplierUpdated(uint256 newMultiplier);
     event Deposited(address indexed user, uint256 rawAmount);
     event Borrowed(address indexed user, uint256 borrowAmountUsd);
 
@@ -45,13 +46,13 @@ contract NaiveVault {
         priceFeed = IAggregatorV3(_priceFeed);
         ltvBps = _ltvBps;
         liquidationThresholdBps = _liqThresholdBps;
-        cachedMultiplier = WAD; // Default 1.0x
+        activeMultiplier = WAD; // Default 1.0x
     }
 
-    /// @notice Update cached multiplier from an indexer/event
-    function updateCachedMultiplierFromEvent(uint256 newMultiplier) external {
-        cachedMultiplier = newMultiplier;
-        emit CachedMultiplierUpdated(newMultiplier);
+    /// @notice Update multiplier
+    function setMultiplier(uint256 newMultiplier) external {
+        activeMultiplier = newMultiplier;
+        emit MultiplierUpdated(newMultiplier);
     }
 
     function deposit(address asset, uint256 rawAmount) external {
@@ -62,28 +63,28 @@ contract NaiveVault {
     }
 
     /**
-     * @notice Flawed borrow function relying on cached multiplier rather than live uiMultiplier()
+     * @notice Flawed borrow function compounding multiplier into Total Return Price
      */
     function borrow(address asset, uint256 borrowAmountUsd) external {
         NaivePosition storage pos = positions[msg.sender][asset];
         uint256 newDebt = pos.debtAmountUsd + borrowAmountUsd;
 
-        // Naive valuation using stale cached multiplier!
-        uint256 uiAmount = (pos.rawCollateral * cachedMultiplier) / WAD;
         (, int256 price, , , ) = priceFeed.latestRoundData();
         require(price > 0, "Invalid price");
 
         uint8 oracleDecimals = priceFeed.decimals();
         uint8 assetDecimals = IERC20(asset).decimals();
 
-        uint256 collateralValueUsd = PositionMath.calculateCollateralValue(
-            uiAmount,
+        // The Fatal Flaw: Multiplies multiplier into Total Return Price!
+        uint256 naiveDoubleAdjustedUsd = PositionMath.calculateNaiveDoubleAdjustedUSD(
+            pos.rawCollateral,
             uint256(price),
+            activeMultiplier,
             oracleDecimals,
             assetDecimals
         );
 
-        uint256 maxDebtUsd = (collateralValueUsd * ltvBps) / BPS_DENOMINATOR;
+        uint256 maxDebtUsd = (naiveDoubleAdjustedUsd * ltvBps) / BPS_DENOMINATOR;
         require(newDebt <= maxDebtUsd, "NaiveVault: Exceeds borrowing limit");
 
         pos.debtAmountUsd = newDebt;
@@ -96,30 +97,47 @@ contract NaiveVault {
 
     function inspectNaivePosition(address user, address asset) external view returns (
         uint256 rawCollateral,
-        uint256 cachedMultiplierUsed,
-        uint256 evaluatedUiCollateral,
-        uint256 collateralValueUsd,
+        uint256 multiplierUsed,
+        uint256 canonicalCollateralUsd,
+        uint256 naiveDoubleAdjustedUsd,
+        uint256 divergenceBps,
         uint256 maxDebtUsd,
         uint256 debtAmountUsd,
         uint256 healthFactor
     ) {
         NaivePosition memory pos = positions[user][asset];
         rawCollateral = pos.rawCollateral;
-        cachedMultiplierUsed = cachedMultiplier;
-        evaluatedUiCollateral = (rawCollateral * cachedMultiplier) / WAD;
+        multiplierUsed = activeMultiplier;
 
         (, int256 price, , , ) = priceFeed.latestRoundData();
         uint8 oracleDecimals = priceFeed.decimals();
         uint8 assetDecimals = IERC20(asset).decimals();
 
-        collateralValueUsd = PositionMath.calculateCollateralValue(
-            evaluatedUiCollateral,
+        canonicalCollateralUsd = PositionMath.valueCollateral(
+            rawCollateral,
             uint256(price),
             oracleDecimals,
             assetDecimals
         );
-        maxDebtUsd = (collateralValueUsd * ltvBps) / BPS_DENOMINATOR;
+
+        naiveDoubleAdjustedUsd = PositionMath.calculateNaiveDoubleAdjustedUSD(
+            rawCollateral,
+            uint256(price),
+            activeMultiplier,
+            oracleDecimals,
+            assetDecimals
+        );
+
+        if (canonicalCollateralUsd > 0) {
+            if (naiveDoubleAdjustedUsd > canonicalCollateralUsd) {
+                divergenceBps = ((naiveDoubleAdjustedUsd - canonicalCollateralUsd) * 10000) / canonicalCollateralUsd;
+            } else {
+                divergenceBps = ((canonicalCollateralUsd - naiveDoubleAdjustedUsd) * 10000) / canonicalCollateralUsd;
+            }
+        }
+
+        maxDebtUsd = (naiveDoubleAdjustedUsd * ltvBps) / BPS_DENOMINATOR;
         debtAmountUsd = pos.debtAmountUsd;
-        healthFactor = PositionMath.calculateHealthFactor(collateralValueUsd, liquidationThresholdBps, debtAmountUsd);
+        healthFactor = PositionMath.calculateHealthFactor(naiveDoubleAdjustedUsd, liquidationThresholdBps, debtAmountUsd);
     }
 }

@@ -14,18 +14,20 @@ function denormalizeFromWad(wadAmount, decimals) {
 }
 
 function evaluateReferenceModel(input) {
-  const rawBalance = BigInt(input.rawBalance);
-  const currentMultiplier = BigInt(input.currentMultiplier);
+  const rawTokenAmount = BigInt(input.rawBalance || input.rawTokenAmount || 0);
+  const currentMultiplier = BigInt(input.currentMultiplier || input.effectiveMultiplier || WAD);
   const pendingMultiplier = input.pendingMultiplier ? BigInt(input.pendingMultiplier) : 0n;
   const effectiveAt = input.effectiveAt || 0;
-  const blockTimestamp = input.blockTimestamp;
-  const price = BigInt(input.oraclePrice);
-  const debt = BigInt(input.debtAmountUsd);
+  const blockTimestamp = input.blockTimestamp || Math.floor(Date.now() / 1000);
+  const totalReturnPrice8 = BigInt(input.oraclePrice || input.totalReturnPrice8 || 0);
+  const debt = BigInt(input.debtAmountUsd || input.totalDebtUsd || 0);
   const maxOracleDelay = BigInt(input.maxOracleDelay || 86400);
   const transitionGuardWindow = BigInt(input.transitionGuardWindow || 3600);
   const guardReductionBps = BigInt(input.guardLtvReductionBps || 500);
+  const assetDecimals = input.assetDecimals || 18;
+  const oracleDecimals = input.oracleDecimals || 8;
 
-  // 1. Determine live effective UI multiplier
+  // 1. Determine live effective UI multiplier (for UI presentation / diagnostics ONLY)
   let effectiveMultiplier = currentMultiplier;
   let hasLivePending = false;
   if (effectiveAt !== 0 && pendingMultiplier !== 0n) {
@@ -36,16 +38,22 @@ function evaluateReferenceModel(input) {
     }
   }
 
-  // 2. Compute UI Amount (rawBalance * multiplier / 1e18)
-  const uiAmount = (rawBalance * effectiveMultiplier) / WAD;
+  // 2. Compute UI Share-Equivalent Amount
+  const uiShareAmount = (rawTokenAmount * effectiveMultiplier) / WAD;
 
-  // 3. Compute Normalized Collateral Value in USD WAD
-  const normUi = normalizeToWad(uiAmount, input.assetDecimals);
-  const normPrice = normalizeToWad(price, input.oracleDecimals);
-  const collateralValueUsd = (normUi * normPrice) / WAD;
+  // 3. Compute Canonical Collateral Valuation under Total Return Value (TRV) Rule:
+  // CANONICAL RULE: rawTokenAmount * totalReturnPrice8
+  // NEVER compounds effectiveMultiplier into TRV!
+  const normRaw = normalizeToWad(rawTokenAmount, assetDecimals);
+  const normPrice = normalizeToWad(totalReturnPrice8, oracleDecimals);
+  const canonicalCollateralUsd = (normRaw * normPrice) / WAD;
 
-  // 4. Check Transition Guard Window
-  let activeLtvBps = BigInt(input.ltvBps);
+  // 4. Compute Naive Double-Adjusted Valuation (raw * multiplier * TRV)
+  const naiveDoubleAdjustedUsd = (canonicalCollateralUsd * effectiveMultiplier) / WAD;
+  const doubleAdjustmentDetected = (effectiveMultiplier !== WAD);
+
+  // 5. Check Transition Guard Window
+  let activeLtvBps = BigInt(input.ltvBps || 7500);
   let inGuardWindow = false;
   if (hasLivePending && effectiveAt > blockTimestamp) {
     const timeToEffective = BigInt(effectiveAt - blockTimestamp);
@@ -57,20 +65,20 @@ function evaluateReferenceModel(input) {
     }
   }
 
-  // 5. Max Debt
-  const maxDebtUsd = (collateralValueUsd * activeLtvBps) / BPS_DENOMINATOR;
+  // 6. Max Debt
+  const maxDebtUsd = (canonicalCollateralUsd * activeLtvBps) / BPS_DENOMINATOR;
 
-  // 6. Health Factor
-  let healthFactor = WAD * 1000n; // Default high
+  // 7. Health Factor
+  let healthFactor = WAD * 1000n;
   if (debt === 0n) {
     healthFactor = 2n ** 256n - 1n; // max uint256
   } else {
-    const liqCollateral = (collateralValueUsd * BigInt(input.liquidationThresholdBps)) / BPS_DENOMINATOR;
+    const liqCollateral = (canonicalCollateralUsd * BigInt(input.liquidationThresholdBps || 8500)) / BPS_DENOMINATOR;
     healthFactor = (liqCollateral * WAD) / debt;
   }
 
-  // 7. Freshness and Status
-  const isStale = (BigInt(blockTimestamp) - BigInt(input.oracleUpdatedAt)) > maxOracleDelay;
+  // 8. Freshness and Status
+  const isStale = (BigInt(blockTimestamp) - BigInt(input.oracleUpdatedAt || blockTimestamp)) > maxOracleDelay;
 
   let status = "COHERENT";
   if (input.isTransferPaused) {
@@ -88,9 +96,15 @@ function evaluateReferenceModel(input) {
   }
 
   return {
+    valuationBasis: "RAW_X_TOTAL_RETURN",
+    multiplierAppliedToValue: false,
+    rawTokenAmount,
     effectiveMultiplier,
-    uiAmount,
-    collateralValueUsd,
+    uiShareAmount,
+    totalReturnPrice8,
+    canonicalCollateralUSD: canonicalCollateralUsd,
+    naiveDoubleAdjustedUSD: naiveDoubleAdjustedUsd,
+    doubleAdjustmentDetected,
     maxDebtUsd,
     totalDebtUsd: debt,
     healthFactor,
